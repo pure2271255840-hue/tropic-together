@@ -7,7 +7,7 @@ export const mapPocProviders: MapProvider[] = [
     kind: "amap",
     includedBecause:
       "Mainland-accessible candidate with mature web SDK; the POC must verify Malaysia place and route coverage.",
-    requiredEnv: ["NEXT_PUBLIC_MAP_POC_AMAP_KEY"],
+    requiredEnv: ["NEXT_PUBLIC_MAP_POC_AMAP_KEY", "NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE"],
     capabilities: [
       "mapInitialLoad",
       "tileRendering",
@@ -86,6 +86,8 @@ export const mapPocProviders: MapProvider[] = [
 
 export const mapPocProviderEnvValues: Record<string, string | undefined> = {
   NEXT_PUBLIC_MAP_POC_AMAP_KEY: process.env.NEXT_PUBLIC_MAP_POC_AMAP_KEY,
+  NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE:
+    process.env.NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE,
   NEXT_PUBLIC_MAP_POC_TENCENT_KEY: process.env.NEXT_PUBLIC_MAP_POC_TENCENT_KEY,
   NEXT_PUBLIC_MAP_POC_BAIDU_AK: process.env.NEXT_PUBLIC_MAP_POC_BAIDU_AK,
   NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE:

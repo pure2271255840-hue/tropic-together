@@ -22,6 +22,7 @@ Create only test keys for the POC. Do not commit real values.
 
 ```env
 NEXT_PUBLIC_MAP_POC_AMAP_KEY=
+NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE=
 NEXT_PUBLIC_MAP_POC_TENCENT_KEY=
 NEXT_PUBLIC_MAP_POC_BAIDU_AK=
 NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE=
@@ -31,6 +32,7 @@ NEXT_PUBLIC_MAP_POC_EXTERNAL_NAV_URL_TEMPLATE=
 Notes:
 
 - Browser map SDK keys are visible to the browser by nature. Restrict them by domain/referrer in each provider console.
+- AMap / Gaode JS API 2.0 also requires the web security code to be configured before loading the SDK. Store it as `NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE` for this isolated POC and keep the domain whitelist tight.
 - `NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE` should use `{z}`, `{x}`, and `{y}` placeholders.
 - `NEXT_PUBLIC_MAP_POC_EXTERNAL_NAV_URL_TEMPLATE` may use `{lat}`, `{lng}`, and `{name}` placeholders.
 - These keys are for the internal POC only and are not a production map architecture decision.

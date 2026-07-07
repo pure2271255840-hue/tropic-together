@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -32,6 +32,9 @@ import type {
 declare global {
   interface Window {
     AMap?: any;
+    _AMapSecurityConfig?: {
+      securityJsCode?: string;
+    };
     TMap?: any;
     BMap?: any;
     __tropicMapPocBaiduInit?: () => void;
@@ -137,6 +140,12 @@ function statusClass(status: PocTestStatus) {
 
 function formatCoordinate(coordinate: Coordinate) {
   return `${coordinate.lat.toFixed(5)}, ${coordinate.lng.toFixed(5)} (${coordinate.system})`;
+}
+
+function amapErrorDetail(response: any) {
+  const info = response?.info ?? response?.message ?? response?.infocode;
+
+  return info ? ` (${String(info)})` : "";
 }
 
 function routePlaces(routeRequest: RouteRequest) {
@@ -334,6 +343,12 @@ export function MapPocClient() {
 
   async function initializeAmap(container: HTMLDivElement, provider: MapProvider) {
     const key = mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_AMAP_KEY;
+    const securityCode =
+      mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE;
+
+    window._AMapSecurityConfig = {
+      securityJsCode: securityCode
+    };
 
     await loadScript(
       `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(
@@ -577,7 +592,7 @@ export function MapPocClient() {
     await new Promise<void>((resolve, reject) => {
       search.search(searchQuery, (status: string, response: any) => {
         if (status !== "complete") {
-          reject(new Error(`AMap place search failed: ${status}`));
+          reject(new Error(`AMap place search failed: ${status}${amapErrorDetail(response)}`));
           return;
         }
 
@@ -717,7 +732,7 @@ export function MapPocClient() {
     await new Promise<void>((resolve, reject) => {
       driving.search(points, (status: string, response: any) => {
         if (status !== "complete") {
-          reject(new Error(`AMap route calculation failed: ${status}`));
+          reject(new Error(`AMap route calculation failed: ${status}${amapErrorDetail(response)}`));
           return;
         }
 
