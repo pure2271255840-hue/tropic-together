@@ -67,7 +67,7 @@ function createInitialResult(
     mobileInteraction: "not-run",
     visibleErrors: [],
     manualTesterNotes,
-    timestamp: new Date().toISOString(),
+    timestamp: "",
     networkCondition
   };
 }
@@ -180,6 +180,10 @@ function tencentCoordinateFromLatLng(value: any): Coordinate | undefined {
 
 function tencentLatLngFromCoordinate(coordinate: Coordinate) {
   return new window.TMap.LatLng(coordinate.lat, coordinate.lng);
+}
+
+function tencentCenterParameter(coordinate: Coordinate) {
+  return `${coordinate.lat},${coordinate.lng}`;
 }
 
 function tencentSearchReferencePlace(query: string) {
@@ -761,9 +765,6 @@ export function MapPocClient() {
 
     const service = new SearchCtor({ pageIndex: 1, pageSize: 5 });
     const referencePlace = tencentSearchReferencePlace(searchQuery);
-    const referenceLocation = tencentLatLngFromCoordinate(
-      referencePlace?.coordinate ?? defaultCenter
-    );
     const cityName = tencentSearchCityName(searchQuery);
     const attempts: Array<() => Promise<any>> = [];
 
@@ -772,15 +773,13 @@ export function MapPocClient() {
         () =>
           service.searchRegion({
             keyword: searchQuery,
-            cityName,
-            referenceLocation,
+            region: cityName,
             autoExtend: true
           }),
         () =>
           service.searchRegion({
             keyword: searchQuery,
-            cityName: "Malaysia",
-            referenceLocation,
+            region: "Malaysia",
             autoExtend: true
           })
       );
@@ -790,8 +789,8 @@ export function MapPocClient() {
       attempts.push(() =>
         service.searchNearby({
           keyword: searchQuery,
-          location: referenceLocation,
-          radius: 1000,
+          center: tencentCenterParameter(referencePlace?.coordinate ?? defaultCenter),
+          radius: 50000,
           autoExtend: true
         })
       );
@@ -1256,7 +1255,10 @@ export function MapPocClient() {
               <ResultRow label="route calculation" status={result.routeCalculation} />
               <ResultRow label="mobile interaction" status={result.mobileInteraction} />
               <ResultRow label="network condition" value={result.networkCondition} />
-              <ResultRow label="timestamp" value={new Date(result.timestamp).toLocaleString()} />
+              <ResultRow
+                label="timestamp"
+                value={result.timestamp ? new Date(result.timestamp).toLocaleString() : "not recorded"}
+              />
             </dl>
 
             <div className="mt-4 space-y-2">
