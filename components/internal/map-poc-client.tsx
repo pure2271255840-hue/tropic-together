@@ -148,6 +148,85 @@ function amapErrorDetail(response: any) {
   return info ? ` (${String(info)})` : "";
 }
 
+function tencentErrorDetail(scope: string, error: unknown) {
+  const source =
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : undefined;
+  const status = source?.status ?? source?.code ?? source?.errCode;
+  const message =
+    source?.message ?? source?.msg ?? source?.detail ?? source?.error ?? error;
+  const details = [status ? `status ${String(status)}` : "", message ? String(message) : ""]
+    .filter(Boolean)
+    .join(": ");
+  const suffix =
+    /servicesk|signature|sig|签名|鉴权|key/i.test(details)
+      ? " This browser-only POC uses only a public JavaScript API key; do not add service secrets to NEXT_PUBLIC_*."
+      : "";
+
+  return `Tencent Maps ${scope} failed${details ? `: ${details}` : "."}${suffix}`;
+}
+
+function tencentCoordinateFromLatLng(value: any): Coordinate | undefined {
+  const lat = Number(value?.lat ?? value?.getLat?.());
+  const lng = Number(value?.lng ?? value?.getLng?.());
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return undefined;
+  }
+
+  return { lat, lng, system: "wgs84" };
+}
+
+function tencentLatLngFromCoordinate(coordinate: Coordinate) {
+  return new window.TMap.LatLng(coordinate.lat, coordinate.lng);
+}
+
+function tencentSearchReferencePlace(query: string) {
+  const normalizedQuery = query.toLowerCase();
+
+  return (
+    mapPocTestPlaces.find((place) =>
+      [place.name, place.searchQuery].some((value) =>
+        normalizedQuery.includes(value.toLowerCase())
+      )
+    ) ??
+    mapPocTestPlaces.find((place) =>
+      place.searchQuery.toLowerCase().includes(normalizedQuery)
+    )
+  );
+}
+
+function tencentSearchCityName(query: string) {
+  const normalizedQuery = query.toLowerCase();
+
+  if (normalizedQuery.includes("kota kinabalu") || normalizedQuery.includes("sabah")) {
+    return "Kota Kinabalu";
+  }
+
+  if (normalizedQuery.includes("penang") || normalizedQuery.includes("george town")) {
+    return "Penang";
+  }
+
+  return "Malaysia";
+}
+
+function tencentSearchResults(response: any) {
+  return response?.data ?? response?.result?.data ?? response?.result?.pois ?? [];
+}
+
+function tencentRouteCandidates(response: any) {
+  return response?.result?.routes ?? response?.data?.routes ?? response?.routes ?? [];
+}
+
+function tencentRoutePath(route: any): Coordinate[] {
+  const rawPath = route?.polyline ?? route?.path ?? route?.paths ?? [];
+
+  return rawPath
+    .map((point: any) => tencentCoordinateFromLatLng(point))
+    .filter((point: Coordinate | undefined): point is Coordinate => Boolean(point));
+}
+
 function routePlaces(routeRequest: RouteRequest) {
   return [routeRequest.origin, ...routeRequest.waypoints, routeRequest.destination];
 }
@@ -199,6 +278,7 @@ export function MapPocClient() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const tencentRouteOverlayRef = useRef<any>(null);
 
   const [selectedProviderId, setSelectedProviderId] = useState(mapPocProviders[0].id);
   const [networkCondition, setNetworkCondition] =
@@ -234,6 +314,13 @@ export function MapPocClient() {
     }));
   }, []);
 
+  const appendVisibleError = useCallback((message: string) => {
+    setResult((current) => ({
+      ...current,
+      visibleErrors: [...current.visibleErrors, message],
+      timestamp: new Date().toISOString()
+    }));
+  }, []);
 
   const markMobileInteraction = useCallback(() => {
     patchResult({ mobileInteraction: "passed" });
@@ -266,6 +353,7 @@ export function MapPocClient() {
       cleanupRef.current?.();
       cleanupRef.current = null;
       mapInstanceRef.current = null;
+      tencentRouteOverlayRef.current = null;
       container.innerHTML = "";
 
       if (selectedProvider.kind === "fallback") {
@@ -339,7 +427,7 @@ export function MapPocClient() {
     };
     // POC SDK probes are intentionally recreated with the selected provider state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patchResult, reloadCount, selectedProvider, viewMode]);
+  }, [markMobileInteraction, patchResult, reloadCount, selectedProvider, viewMode]);
 
   async function initializeAmap(container: HTMLDivElement, provider: MapProvider) {
     const key = mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_AMAP_KEY;
@@ -400,12 +488,16 @@ export function MapPocClient() {
   async function initializeTencent(container: HTMLDivElement, provider: MapProvider) {
     const key = mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_TENCENT_KEY;
 
-    await loadScript(
-      `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(
-        key ?? ""
-      )}&libraries=service`,
-      "map-poc-tencent"
-    );
+    try {
+      await loadScript(
+        `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(
+          key ?? ""
+        )}&libraries=service`,
+        "map-poc-tencent"
+      );
+    } catch (error) {
+      throw new Error(tencentErrorDetail("SDK load", error));
+    }
 
     if (!window.TMap) {
       throw new Error("Tencent Maps SDK loaded but window.TMap is unavailable.");
@@ -413,32 +505,75 @@ export function MapPocClient() {
 
     const TMap = window.TMap;
     const map = new TMap.Map(container, {
-      center: new TMap.LatLng(defaultCenter.lat, defaultCenter.lng),
+      center: tencentLatLngFromCoordinate(defaultCenter),
+      pitch: 0,
       zoom: 5
     });
 
     mapInstanceRef.current = map;
     container.addEventListener("pointerdown", markMobileInteraction);
+    container.addEventListener("touchstart", markMobileInteraction);
     cleanupRef.current = () => {
       container.removeEventListener("pointerdown", markMobileInteraction);
+      container.removeEventListener("touchstart", markMobileInteraction);
+      tencentRouteOverlayRef.current?.destroy?.();
+      tencentRouteOverlayRef.current = null;
       map.destroy?.();
     };
 
     new TMap.MultiMarker({
       geometries: mapPocTestPlaces.map((place) => ({
         id: place.id,
-        position: new TMap.LatLng(place.coordinate.lat, place.coordinate.lng),
+        position: tencentLatLngFromCoordinate(place.coordinate),
         properties: { title: place.name }
       })),
       map
     });
+
+    if (TMap.MultiLabel && TMap.LabelStyle) {
+      new TMap.MultiLabel({
+        geometries: mapPocTestPlaces.map((place) => ({
+          id: `label-${place.id}`,
+          styleId: "label",
+          position: tencentLatLngFromCoordinate(place.coordinate),
+          content: place.name
+        })),
+        map,
+        styles: {
+          label: new TMap.LabelStyle({
+            backgroundColor: "rgba(255, 255, 255, 0.92)",
+            borderRadius: 4,
+            color: "#292524",
+            fontSize: 12,
+            offset: { x: 0, y: -34 },
+            padding: "4px 6px"
+          })
+        }
+      });
+    }
 
     if (provider.id !== selectedProviderId) {
       return;
     }
 
     await new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 4000);
+      let resolved = false;
+      const finish = () => {
+        if (!resolved) {
+          resolved = true;
+          window.clearTimeout(timeout);
+          resolve();
+        }
+      };
+      const timeout = window.setTimeout(finish, 4000);
+
+      map.on?.("tilesloaded", finish);
+      map.on?.("idle", finish);
+      window.setTimeout(() => {
+        if (container.querySelector("canvas")) {
+          finish();
+        }
+      }, 1200);
     });
   }
 
@@ -578,7 +713,8 @@ export function MapPocClient() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown place search error";
-      patchResult({ placeSearch: "failed", visibleErrors: [...result.visibleErrors, message] });
+      patchResult({ placeSearch: "failed" });
+      appendVisibleError(message);
     }
   }
 
@@ -623,13 +759,73 @@ export function MapPocClient() {
       throw new Error("Tencent Maps Search service is unavailable in the loaded SDK.");
     }
 
-    const service = new SearchCtor({ pageSize: 5 });
-    const center = new window.TMap.LatLng(defaultCenter.lat, defaultCenter.lng);
-    const response =
-      typeof service.searchRegion === "function"
-        ? await service.searchRegion({ keyword: searchQuery, location: center, radius: 500000 })
-        : await service.searchNearby({ keyword: searchQuery, location: center, radius: 500000 });
-    const data = response?.data ?? response?.result?.data ?? [];
+    const service = new SearchCtor({ pageIndex: 1, pageSize: 5 });
+    const referencePlace = tencentSearchReferencePlace(searchQuery);
+    const referenceLocation = tencentLatLngFromCoordinate(
+      referencePlace?.coordinate ?? defaultCenter
+    );
+    const cityName = tencentSearchCityName(searchQuery);
+    const attempts: Array<() => Promise<any>> = [];
+
+    if (typeof service.searchRegion === "function") {
+      attempts.push(
+        () =>
+          service.searchRegion({
+            keyword: searchQuery,
+            cityName,
+            referenceLocation,
+            autoExtend: true
+          }),
+        () =>
+          service.searchRegion({
+            keyword: searchQuery,
+            cityName: "Malaysia",
+            referenceLocation,
+            autoExtend: true
+          })
+      );
+    }
+
+    if (typeof service.searchNearby === "function") {
+      attempts.push(() =>
+        service.searchNearby({
+          keyword: searchQuery,
+          location: referenceLocation,
+          radius: 1000,
+          autoExtend: true
+        })
+      );
+    }
+
+    if (attempts.length === 0) {
+      throw new Error("Tencent Maps Search service loaded without searchRegion or searchNearby.");
+    }
+
+    let data: any[] = [];
+    let lastError: unknown;
+
+    for (const attempt of attempts) {
+      try {
+        const response = await attempt();
+        const status = response?.status ?? response?.result?.status;
+
+        if (status && Number(status) !== 0) {
+          throw response;
+        }
+
+        data = tencentSearchResults(response);
+
+        if (data.length > 0) {
+          break;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (data.length === 0 && lastError) {
+      throw new Error(tencentErrorDetail("place search", lastError));
+    }
 
     setSearchResults(
       data.slice(0, 5).map((item: any) => ({
@@ -638,13 +834,17 @@ export function MapPocClient() {
         name: item.title ?? item.name,
         address: item.address,
         city: item.ad_info?.city,
-        coordinate: item.location
-          ? { lat: Number(item.location.lat), lng: Number(item.location.lng), system: "wgs84" }
-          : undefined,
+        coordinate: item.location ? tencentCoordinateFromLatLng(item.location) : undefined,
         rawConfidence: "medium"
       }))
     );
-    patchResult({ placeSearch: data.length > 0 ? "passed" : "failed" });
+    patchResult({
+      placeSearch: data.length > 0 ? "passed" : "failed"
+    });
+
+    if (data.length === 0) {
+      appendVisibleError(`Tencent Maps place search returned no Malaysia results for "${searchQuery}".`);
+    }
   }
 
   async function runBaiduSearch() {
@@ -712,10 +912,8 @@ export function MapPocClient() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown route error";
-      patchResult({
-        routeCalculation: "failed",
-        visibleErrors: [...result.visibleErrors, message]
-      });
+      patchResult({ routeCalculation: "failed" });
+      appendVisibleError(message);
     }
   }
 
@@ -759,28 +957,80 @@ export function MapPocClient() {
 
     const service = new DrivingCtor();
     const response = await service.search({
-      from: new window.TMap.LatLng(
-        selectedRoute.origin.coordinate.lat,
-        selectedRoute.origin.coordinate.lng
-      ),
-      to: new window.TMap.LatLng(
-        selectedRoute.destination.coordinate.lat,
-        selectedRoute.destination.coordinate.lng
-      ),
+      from: tencentLatLngFromCoordinate(selectedRoute.origin.coordinate),
+      to: tencentLatLngFromCoordinate(selectedRoute.destination.coordinate),
       waypoints: selectedRoute.waypoints.map(
-        (place) => new window.TMap.LatLng(place.coordinate.lat, place.coordinate.lng)
+        (place) => tencentLatLngFromCoordinate(place.coordinate)
       )
+    }).catch((error: unknown) => {
+      throw new Error(tencentErrorDetail("route calculation", error));
     });
-    const route = response?.result?.routes?.[0] ?? response?.data?.routes?.[0];
+    const status = response?.status ?? response?.result?.status;
+
+    if (status && Number(status) !== 0) {
+      throw new Error(tencentErrorDetail("route calculation", response));
+    }
+
+    const route = tencentRouteCandidates(response)[0];
+    const path = tencentRoutePath(route);
+    const durationMinutes = Number(route?.duration);
+
+    tencentRouteOverlayRef.current?.destroy?.();
+    tencentRouteOverlayRef.current = null;
+
+    if (
+      route &&
+      path.length > 0 &&
+      window.TMap?.MultiPolyline &&
+      window.TMap?.PolylineStyle &&
+      mapInstanceRef.current
+    ) {
+      const TMap = window.TMap;
+
+      tencentRouteOverlayRef.current = new TMap.MultiPolyline({
+        geometries: [
+          {
+            id: selectedRoute.id,
+            paths: path.map((point) => tencentLatLngFromCoordinate(point)),
+            styleId: "route"
+          }
+        ],
+        map: mapInstanceRef.current,
+        styles: {
+          route: new TMap.PolylineStyle({
+            borderColor: "#ffffff",
+            borderWidth: 2,
+            color: "#0f766e",
+            lineCap: "round",
+            width: 6
+          })
+        }
+      });
+
+      const midpoint = path[Math.floor(path.length / 2)];
+      mapInstanceRef.current.setCenter?.(tencentLatLngFromCoordinate(midpoint));
+      mapInstanceRef.current.setZoom?.(13);
+    } else if (route && path.length === 0) {
+      appendVisibleError("Tencent Maps route succeeded but returned no drawable polyline.");
+    } else if (route) {
+      appendVisibleError(
+        "Tencent Maps route succeeded but the loaded SDK does not expose drawable polyline classes."
+      );
+    }
 
     setRouteResult({
       providerId: "tencent",
       routeId: selectedRoute.id,
       distanceMeters: route?.distance,
-      durationSeconds: route?.duration,
+      durationSeconds: Number.isFinite(durationMinutes) ? durationMinutes * 60 : undefined,
+      path,
       summary: selectedRoute.label
     });
     patchResult({ routeCalculation: route ? "passed" : "failed" });
+
+    if (!route) {
+      appendVisibleError(`Tencent Maps route calculation returned no route for "${selectedRoute.label}".`);
+    }
   }
 
   async function runBaiduRoute() {
