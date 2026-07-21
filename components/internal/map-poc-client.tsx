@@ -182,10 +182,6 @@ function tencentLatLngFromCoordinate(coordinate: Coordinate) {
   return new window.TMap.LatLng(coordinate.lat, coordinate.lng);
 }
 
-function tencentCenterParameter(coordinate: Coordinate) {
-  return `${coordinate.lat},${coordinate.lng}`;
-}
-
 function tencentSearchReferencePlace(query: string) {
   const normalizedQuery = query.toLowerCase();
 
@@ -765,8 +761,22 @@ export function MapPocClient() {
 
     const service = new SearchCtor({ pageIndex: 1, pageSize: 5 });
     const referencePlace = tencentSearchReferencePlace(searchQuery);
+    const referenceLocation = tencentLatLngFromCoordinate(
+      referencePlace?.coordinate ?? defaultCenter
+    );
     const cityName = tencentSearchCityName(searchQuery);
     const attempts: Array<() => Promise<any>> = [];
+
+    if (typeof service.searchAround === "function") {
+      attempts.push(() =>
+        service.searchAround({
+          keyword: searchQuery,
+          center: referenceLocation,
+          radius: 50000,
+          autoExtend: true
+        })
+      );
+    }
 
     if (typeof service.searchRegion === "function") {
       attempts.push(
@@ -789,7 +799,7 @@ export function MapPocClient() {
       attempts.push(() =>
         service.searchNearby({
           keyword: searchQuery,
-          center: tencentCenterParameter(referencePlace?.coordinate ?? defaultCenter),
+          center: referenceLocation,
           radius: 50000,
           autoExtend: true
         })
@@ -797,7 +807,9 @@ export function MapPocClient() {
     }
 
     if (attempts.length === 0) {
-      throw new Error("Tencent Maps Search service loaded without searchRegion or searchNearby.");
+      throw new Error(
+        "Tencent Maps Search service loaded without searchAround, searchRegion, or searchNearby."
+      );
     }
 
     let data: any[] = [];
