@@ -760,23 +760,8 @@ export function MapPocClient() {
     }
 
     const service = new SearchCtor({ pageIndex: 1, pageSize: 5 });
-    const referencePlace = tencentSearchReferencePlace(searchQuery);
-    const referenceLocation = tencentLatLngFromCoordinate(
-      referencePlace?.coordinate ?? defaultCenter
-    );
     const cityName = tencentSearchCityName(searchQuery);
     const attempts: Array<() => Promise<any>> = [];
-
-    if (typeof service.searchAround === "function") {
-      attempts.push(() =>
-        service.searchAround({
-          keyword: searchQuery,
-          center: referenceLocation,
-          radius: 50000,
-          autoExtend: true
-        })
-      );
-    }
 
     if (typeof service.searchRegion === "function") {
       attempts.push(
@@ -795,21 +780,8 @@ export function MapPocClient() {
       );
     }
 
-    if (typeof service.searchNearby === "function") {
-      attempts.push(() =>
-        service.searchNearby({
-          keyword: searchQuery,
-          center: referenceLocation,
-          radius: 50000,
-          autoExtend: true
-        })
-      );
-    }
-
     if (attempts.length === 0) {
-      throw new Error(
-        "Tencent Maps Search service loaded without searchAround, searchRegion, or searchNearby."
-      );
+      throw new Error("Tencent Maps Search service loaded without searchRegion.");
     }
 
     let data: any[] = [];
