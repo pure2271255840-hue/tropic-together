@@ -38,6 +38,24 @@ export const mapPocProviders: MapProvider[] = [
     productionCandidate: true
   },
   {
+    id: "google",
+    label: "Google Maps",
+    kind: "google",
+    includedBecause:
+      "VPN or overseas-network comparison provider for validating Malaysia place search and routing quality against domestic providers.",
+    requiredEnv: ["NEXT_PUBLIC_MAP_POC_GOOGLE_KEY"],
+    capabilities: [
+      "mapInitialLoad",
+      "tileRendering",
+      "wgs84PinAccuracy",
+      "markerDisplay",
+      "placeSearch",
+      "routeCalculation",
+      "mobileInteraction"
+    ],
+    productionCandidate: false
+  },
+  {
     id: "baidu",
     label: "Baidu Maps",
     kind: "baidu",
@@ -91,6 +109,7 @@ export const mapPocProviderEnvValues: Record<string, string | undefined> = {
   NEXT_PUBLIC_MAP_POC_TENCENT_KEY: process.env.NEXT_PUBLIC_MAP_POC_TENCENT_KEY,
   NEXT_PUBLIC_MAP_POC_TENCENT_WEBSERVICE_KEY:
     process.env.NEXT_PUBLIC_MAP_POC_TENCENT_WEBSERVICE_KEY,
+  NEXT_PUBLIC_MAP_POC_GOOGLE_KEY: process.env.NEXT_PUBLIC_MAP_POC_GOOGLE_KEY,
   NEXT_PUBLIC_MAP_POC_BAIDU_AK: process.env.NEXT_PUBLIC_MAP_POC_BAIDU_AK,
   NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE:
     process.env.NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE,

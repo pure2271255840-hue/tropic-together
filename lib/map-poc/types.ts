@@ -18,7 +18,13 @@ export type MapCapability =
   | "staticPlaceholder"
   | "externalNavigation";
 
-export type ProviderKind = "amap" | "tencent" | "baidu" | "raster" | "fallback";
+export type ProviderKind =
+  | "amap"
+  | "tencent"
+  | "google"
+  | "baidu"
+  | "raster"
+  | "fallback";
 
 export type MapProvider = {
   id: string;

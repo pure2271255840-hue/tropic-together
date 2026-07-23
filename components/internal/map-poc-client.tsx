@@ -37,7 +37,9 @@ declare global {
     };
     TMap?: any;
     BMap?: any;
+    google?: any;
     __tropicMapPocBaiduInit?: () => void;
+    __tropicMapPocGoogleInit?: () => void;
   }
 }
 
@@ -55,6 +57,7 @@ const viewModes: ViewMode[] = ["interactive", "list", "static", "external", "una
 const providerLabels: Record<string, string> = {
   amap: "高德地图",
   tencent: "腾讯地图",
+  google: "Google Maps",
   baidu: "百度地图",
   raster: "自定义瓦片",
   "fallback-list": "列表兜底"
@@ -63,6 +66,7 @@ const providerLabels: Record<string, string> = {
 const providerReasonLabels: Record<string, string> = {
   amap: "国内可访问候选方；本 POC 用来验证马来西亚地点搜索、路线规划、瓦片和移动端交互是否可用。",
   tencent: "国内可访问候选方；本 POC 重点验证腾讯地图在马来西亚目的地、路线和移动端场景下的覆盖能力。",
+  google: "VPN 或海外网络对照组；用于核对马来西亚国外地址、地点搜索和路线规划质量，不代表中国大陆无 VPN 可用。",
   baidu: "国内可访问基线；用于提前暴露坐标系和马来西亚覆盖风险。",
   raster: "供应商无关的瓦片兜底路径；搜索和路线规划不在这个模式内验证。",
   "fallback-list": "产品韧性基线；当地图瓦片、搜索或路线不可用时，用户仍应能浏览地点列表。"
@@ -126,7 +130,11 @@ function createInitialResult(
   };
 }
 
-function loadScript(src: string, id: string, callbackName?: "__tropicMapPocBaiduInit") {
+function loadScript(
+  src: string,
+  id: string,
+  callbackName?: "__tropicMapPocBaiduInit" | "__tropicMapPocGoogleInit"
+) {
   return new Promise<void>((resolve, reject) => {
     if (document.getElementById(id)) {
       resolve();
@@ -319,6 +327,90 @@ function tencentErrorDetail(scope: string, error: unknown) {
       : "";
 
   return `腾讯地图${scope}失败${details ? `：${details}` : "。"}${statusHint}${suffix}`;
+}
+
+function googleErrorDetail(scope: string, error: unknown) {
+  const source =
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : undefined;
+  const status = source?.status ?? source?.code ?? source?.name;
+  const message =
+    source?.message ?? source?.msg ?? source?.detail ?? source?.error ?? error;
+  const details = [status ? `状态 ${String(status)}` : "", message ? String(message) : ""]
+    .filter(Boolean)
+    .join("：");
+  const hint = /billing|ApiNotActivated|RefererNotAllowed|REQUEST_DENIED|key|quota/i.test(
+    details
+  )
+    ? " 请确认 Google Maps Platform 已启用 Maps JavaScript API、Places API、Directions/Routes 能力，API key 已做来源限制且当前配额/账单可用。"
+    : " 请确认当前网络能访问 Google Maps，尤其是中国大陆环境下通常需要 VPN 或海外网络。";
+
+  return `Google Maps ${scope}失败${details ? `：${details}` : "。"}${hint}`;
+}
+
+function googleLatLngLiteral(coordinate: Coordinate) {
+  return { lat: coordinate.lat, lng: coordinate.lng };
+}
+
+function googleCoordinateFromLatLng(value: any): Coordinate | undefined {
+  const lat = Number(typeof value?.lat === "function" ? value.lat() : value?.lat);
+  const lng = Number(typeof value?.lng === "function" ? value.lng() : value?.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return undefined;
+  }
+
+  return { lat, lng, system: "wgs84" };
+}
+
+function googlePlaceDisplayName(place: any, fallbackName: string) {
+  const rawName = place?.displayName?.text ?? place?.displayName ?? place?.name;
+
+  return rawName ? String(rawName) : fallbackName;
+}
+
+function googlePlaceAddress(place: any) {
+  return place?.formattedAddress ?? place?.formatted_address ?? place?.vicinity;
+}
+
+function googlePlaceCity(place: any) {
+  const components = place?.addressComponents ?? place?.address_components ?? [];
+  const cityComponent = components.find((component: any) => {
+    const types = component?.types ?? [];
+
+    return (
+      types.includes("locality") ||
+      types.includes("administrative_area_level_2") ||
+      types.includes("administrative_area_level_1")
+    );
+  });
+
+  return cityComponent?.longText ?? cityComponent?.long_name ?? cityComponent?.shortText;
+}
+
+function googlePlacesBoundsBias() {
+  return {
+    east: 116.6,
+    north: 6.4,
+    south: 4.8,
+    west: 99.8
+  };
+}
+
+function googleDirectionsStatusText(status: unknown) {
+  switch (String(status)) {
+    case "ZERO_RESULTS":
+      return "未找到可用路线。";
+    case "REQUEST_DENIED":
+      return "请求被拒绝，请检查 key、来源限制、API 启用状态和账单。";
+    case "OVER_QUERY_LIMIT":
+      return "调用量超过配额限制。";
+    case "INVALID_REQUEST":
+      return "请求参数无效。";
+    default:
+      return status ? `状态：${String(status)}` : "未知状态。";
+  }
 }
 
 function tencentCoordinateFromLatLng(value: any): Coordinate | undefined {
@@ -524,6 +616,7 @@ export function MapPocClient() {
   const mapInstanceRef = useRef<any>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const tencentRouteOverlayRef = useRef<any>(null);
+  const googleRouteRendererRef = useRef<any>(null);
 
   const [selectedProviderId, setSelectedProviderId] = useState(mapPocProviders[0].id);
   const [networkCondition, setNetworkCondition] =
@@ -599,6 +692,7 @@ export function MapPocClient() {
       cleanupRef.current = null;
       mapInstanceRef.current = null;
       tencentRouteOverlayRef.current = null;
+      googleRouteRendererRef.current = null;
       container.innerHTML = "";
 
       if (selectedProvider.kind === "fallback") {
@@ -637,6 +731,8 @@ export function MapPocClient() {
           await initializeAmap(container, selectedProvider);
         } else if (selectedProvider.kind === "tencent") {
           await initializeTencent(container, selectedProvider);
+        } else if (selectedProvider.kind === "google") {
+          await initializeGoogle(container, selectedProvider);
         } else if (selectedProvider.kind === "baidu") {
           await initializeBaidu(container, selectedProvider);
         } else if (selectedProvider.kind === "raster") {
@@ -822,6 +918,93 @@ export function MapPocClient() {
     });
   }
 
+  async function initializeGoogle(container: HTMLDivElement, provider: MapProvider) {
+    const key = mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_GOOGLE_KEY;
+
+    try {
+      await loadScript(
+        `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+          key ?? ""
+        )}&loading=async&callback=__tropicMapPocGoogleInit&libraries=places,routes&language=zh-CN&region=MY`,
+        "map-poc-google",
+        "__tropicMapPocGoogleInit"
+      );
+    } catch (error) {
+      throw new Error(googleErrorDetail("SDK 加载", error));
+    }
+
+    if (!window.google?.maps) {
+      throw new Error("Google Maps SDK 已加载，但 window.google.maps 不可用。");
+    }
+
+    await Promise.all([
+      window.google.maps.importLibrary?.("maps"),
+      window.google.maps.importLibrary?.("places"),
+      window.google.maps.importLibrary?.("routes")
+    ]);
+
+    const googleMaps = window.google.maps;
+    const map = new googleMaps.Map(container, {
+      center: googleLatLngLiteral(defaultCenter),
+      fullscreenControl: true,
+      gestureHandling: "greedy",
+      mapTypeControl: true,
+      streetViewControl: false,
+      zoom: 5
+    });
+    const bounds = new googleMaps.LatLngBounds();
+    const infoWindow = new googleMaps.InfoWindow();
+    const markers = mapPocTestPlaces.map((place) => {
+      const marker = new googleMaps.Marker({
+        map,
+        position: googleLatLngLiteral(place.coordinate),
+        title: formatPlaceName(place)
+      });
+
+      bounds.extend(googleLatLngLiteral(place.coordinate));
+      marker.addListener("click", () => {
+        infoWindow.setContent(
+          `<strong>${formatPlaceName(place)}</strong><br />${formatCoordinate(place.coordinate)}`
+        );
+        infoWindow.open({ anchor: marker, map });
+      });
+
+      return marker;
+    });
+
+    map.fitBounds(bounds, 40);
+    mapInstanceRef.current = map;
+    container.addEventListener("pointerdown", markMobileInteraction);
+    container.addEventListener("touchstart", markMobileInteraction);
+    cleanupRef.current = () => {
+      container.removeEventListener("pointerdown", markMobileInteraction);
+      container.removeEventListener("touchstart", markMobileInteraction);
+      googleRouteRendererRef.current?.setMap?.(null);
+      googleRouteRendererRef.current = null;
+      markers.forEach((marker) => marker.setMap?.(null));
+      infoWindow.close?.();
+      googleMaps.event?.clearInstanceListeners?.(map);
+    };
+
+    if (provider.id !== selectedProviderId) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      let resolved = false;
+      const finish = () => {
+        if (!resolved) {
+          resolved = true;
+          window.clearTimeout(timeout);
+          resolve();
+        }
+      };
+      const timeout = window.setTimeout(finish, 4000);
+
+      googleMaps.event?.addListenerOnce?.(map, "idle", finish);
+    });
+  }
+
   async function initializeBaidu(container: HTMLDivElement, provider: MapProvider) {
     const key = mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_BAIDU_AK;
 
@@ -951,6 +1134,8 @@ export function MapPocClient() {
         await runAmapSearch();
       } else if (selectedProvider.kind === "tencent") {
         await runTencentSearch();
+      } else if (selectedProvider.kind === "google") {
+        await runGoogleSearch();
       } else if (selectedProvider.kind === "baidu") {
         await runBaiduSearch();
       } else {
@@ -1126,6 +1311,100 @@ export function MapPocClient() {
     return [];
   }
 
+  async function runGoogleSearch() {
+    const googleMaps = window.google?.maps;
+
+    if (!googleMaps) {
+      throw new Error("Google Maps SDK 尚未加载，请先切换到 Google Maps 交互地图并等待地图加载完成。");
+    }
+
+    await googleMaps.importLibrary?.("places");
+
+    const Place = googleMaps.places?.Place;
+
+    if (Place?.searchByText) {
+      const response = await Place.searchByText({
+        fields: [
+          "id",
+          "displayName",
+          "formattedAddress",
+          "location",
+          "addressComponents"
+        ],
+        language: "zh-CN",
+        locationBias: googlePlacesBoundsBias(),
+        maxResultCount: 5,
+        region: "my",
+        textQuery: searchQuery
+      });
+      const places = response?.places ?? [];
+
+      setSearchResults(
+        places.slice(0, 5).map((place: any) => ({
+          providerId: "google",
+          placeId: place.id,
+          name: googlePlaceDisplayName(place, searchQuery),
+          address: googlePlaceAddress(place),
+          city: googlePlaceCity(place),
+          coordinate: googleCoordinateFromLatLng(place.location),
+          rawConfidence: "high"
+        }))
+      );
+      patchResult({ placeSearch: places.length > 0 ? "passed" : "failed" });
+
+      if (places.length === 0) {
+        appendVisibleError(`Google Maps 地点搜索未返回结果：${searchQuery}。`);
+      }
+
+      return;
+    }
+
+    if (!googleMaps.places?.PlacesService || !mapInstanceRef.current) {
+      throw new Error("Google Maps Places 地点搜索服务不可用。");
+    }
+
+    const service = new googleMaps.places.PlacesService(mapInstanceRef.current);
+
+    await new Promise<void>((resolve, reject) => {
+      service.textSearch(
+        {
+          bounds: googlePlacesBoundsBias(),
+          query: searchQuery,
+          region: "my"
+        },
+        (places: any[] | null, status: string) => {
+          if (status !== googleMaps.places.PlacesServiceStatus.OK) {
+            if (status === googleMaps.places.PlacesServiceStatus.ZERO_RESULTS) {
+              setSearchResults([]);
+              patchResult({ placeSearch: "failed" });
+              appendVisibleError(`Google Maps 地点搜索未返回结果：${searchQuery}。`);
+              resolve();
+              return;
+            }
+
+            reject(new Error(googleErrorDetail("地点搜索", { status })));
+            return;
+          }
+
+          const results = places ?? [];
+          setSearchResults(
+            results.slice(0, 5).map((place: any) => ({
+              providerId: "google",
+              placeId: place.place_id,
+              name: googlePlaceDisplayName(place, searchQuery),
+              address: googlePlaceAddress(place),
+              city: googlePlaceCity(place),
+              coordinate: googleCoordinateFromLatLng(place.geometry?.location),
+              rawConfidence: "high"
+            }))
+          );
+          patchResult({ placeSearch: results.length > 0 ? "passed" : "failed" });
+          resolve();
+        }
+      );
+    });
+  }
+
   async function runBaiduSearch() {
     if (!window.BMap?.LocalSearch) {
       throw new Error("百度 LocalSearch 不可用。");
@@ -1184,6 +1463,8 @@ export function MapPocClient() {
         await runAmapRoute();
       } else if (selectedProvider.kind === "tencent") {
         await runTencentRoute();
+      } else if (selectedProvider.kind === "google") {
+        await runGoogleRoute();
       } else if (selectedProvider.kind === "baidu") {
         await runBaiduRoute();
       } else {
@@ -1378,6 +1659,91 @@ export function MapPocClient() {
     throw new Error(tencentErrorDetail("WebService 路线计算", lastError));
   }
 
+  async function runGoogleRoute() {
+    const googleMaps = window.google?.maps;
+
+    if (!googleMaps) {
+      throw new Error("Google Maps SDK 尚未加载，请先切换到 Google Maps 交互地图并等待地图加载完成。");
+    }
+
+    await googleMaps.importLibrary?.("routes");
+
+    if (!googleMaps.DirectionsService || !googleMaps.DirectionsRenderer) {
+      throw new Error("Google Maps 路线规划服务不可用。");
+    }
+
+    const service = new googleMaps.DirectionsService();
+    const response = await new Promise<any>((resolve, reject) => {
+      service.route(
+        {
+          destination: googleLatLngLiteral(selectedRoute.destination.coordinate),
+          origin: googleLatLngLiteral(selectedRoute.origin.coordinate),
+          region: "my",
+          travelMode: googleMaps.TravelMode.DRIVING,
+          waypoints: selectedRoute.waypoints.map((place) => ({
+            location: googleLatLngLiteral(place.coordinate),
+            stopover: true
+          }))
+        },
+        (result: any, status: string) => {
+          if (status !== googleMaps.DirectionsStatus.OK) {
+            reject(
+              new Error(
+                googleErrorDetail("路线规划", {
+                  message: googleDirectionsStatusText(status),
+                  status
+                })
+              )
+            );
+            return;
+          }
+
+          resolve(result);
+        }
+      );
+    });
+    const route = response?.routes?.[0];
+    const legs = route?.legs ?? [];
+    const distanceMeters = legs.reduce(
+      (total: number, leg: any) => total + Number(leg?.distance?.value ?? 0),
+      0
+    );
+    const durationSeconds = legs.reduce(
+      (total: number, leg: any) => total + Number(leg?.duration?.value ?? 0),
+      0
+    );
+    const path =
+      route?.overview_path
+        ?.map((point: any) => googleCoordinateFromLatLng(point))
+        .filter((point: Coordinate | undefined): point is Coordinate => Boolean(point)) ?? [];
+
+    googleRouteRendererRef.current?.setMap?.(null);
+    googleRouteRendererRef.current = null;
+
+    if (mapInstanceRef.current) {
+      googleRouteRendererRef.current = new googleMaps.DirectionsRenderer({
+        map: mapInstanceRef.current,
+        preserveViewport: false,
+        suppressMarkers: false
+      });
+      googleRouteRendererRef.current.setDirections(response);
+    }
+
+    setRouteResult({
+      providerId: "google",
+      routeId: selectedRoute.id,
+      distanceMeters: distanceMeters > 0 ? distanceMeters : undefined,
+      durationSeconds: durationSeconds > 0 ? durationSeconds : undefined,
+      path,
+      summary: route?.summary ?? formatRouteLabel(selectedRoute)
+    });
+    patchResult({ routeCalculation: route ? "passed" : "failed" });
+
+    if (!route) {
+      appendVisibleError(`Google Maps 路线规划没有返回路线：${formatRouteLabel(selectedRoute)}。`);
+    }
+  }
+
   async function runBaiduRoute() {
     if (!window.BMap?.DrivingRoute) {
       throw new Error("百度 DrivingRoute 不可用。");
@@ -1474,6 +1840,12 @@ export function MapPocClient() {
             <p className="mt-3 text-sm leading-6 text-stone-600">
               {formatProviderReason(selectedProvider)}
             </p>
+            {selectedProvider.kind === "google" ? (
+              <p className="mt-2 rounded border border-sky-200 bg-sky-50 p-2 text-xs leading-5 text-sky-900">
+                Google Maps 是 VPN / 海外网络对照组；如果中国大陆无 VPN 下加载失败，应记录为网络可访问性限制，
+                不应作为国内主 Provider 通过结论。
+              </p>
+            ) : null}
 
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
               {viewModes.map((mode) => (

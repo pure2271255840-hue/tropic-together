@@ -12,6 +12,7 @@ The page is non-production. It does not choose a production map provider and doe
 
 - AMap / Gaode: primary mainland-accessible candidate. Test whether Malaysia places and routes work reliably.
 - Tencent Maps: second mainland-accessible candidate. Test overseas coverage, mobile interaction, and route behavior.
+- Google Maps: VPN/overseas-network comparison provider. Use it to confirm Malaysia addresses, place search, and route quality when domestic providers are inconclusive.
 - Baidu Maps: mainland-accessible comparison provider. Watch for coordinate offset and overseas coverage limitations.
 - Configurable raster tiles: provider-neutral tile endpoint experiment for future self-hosted or domestic CDN tiles.
 - List/static/external fallbacks: product resilience prototypes when interactive maps are unavailable.
@@ -25,6 +26,7 @@ NEXT_PUBLIC_MAP_POC_AMAP_KEY=
 NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE=
 NEXT_PUBLIC_MAP_POC_TENCENT_KEY=
 NEXT_PUBLIC_MAP_POC_BAIDU_AK=
+NEXT_PUBLIC_MAP_POC_GOOGLE_KEY=
 NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE=
 NEXT_PUBLIC_MAP_POC_EXTERNAL_NAV_URL_TEMPLATE=
 ```
@@ -33,6 +35,7 @@ Notes:
 
 - Browser map SDK keys are visible to the browser by nature. Restrict them by domain/referrer in each provider console.
 - AMap / Gaode JS API 2.0 also requires the web security code to be configured before loading the SDK. Store it as `NEXT_PUBLIC_MAP_POC_AMAP_SECURITY_CODE` for this isolated POC and keep the domain whitelist tight.
+- Google Maps is included only as a VPN/overseas-network comparison provider for this POC. Enable a restricted test key for Maps JavaScript API, Places API, and route/directions capability; do not treat Google success as mainland no-VPN viability.
 - `NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE` should use `{z}`, `{x}`, and `{y}` placeholders.
 - `NEXT_PUBLIC_MAP_POC_EXTERNAL_NAV_URL_TEMPLATE` may use `{lat}`, `{lng}`, and `{name}` placeholders.
 - These keys are for the internal POC only and are not a production map architecture decision.
@@ -71,8 +74,9 @@ Notes:
 8. Run both route cases:
    - George Town -> Armenian Street -> Chew Jetty
    - Jesselton Point -> Gaya Street -> Tanjung Aru Beach
-9. Record visible errors and notes in the results panel.
-10. Test all fallback modes:
+9. For Google Maps, repeat the search and route cases with VPN enabled or from an overseas network, and record whether it returns better Malaysia address/route results than Tencent or AMap.
+10. Record visible errors and notes in the results panel.
+11. Test all fallback modes:
     - list
     - static
     - external
@@ -109,7 +113,8 @@ This is the decisive test.
    - whether the two Malaysia route cases work;
    - whether panning and pinch zoom feel usable;
    - whether any provider console/domain-key restrictions appear.
-6. Do not recommend a production provider until this test is complete.
+6. If Google Maps fails without VPN, record that as expected mainland accessibility risk; then retest Google with VPN or overseas network only as a Malaysia data-quality comparison.
+7. Do not recommend a production provider until this test is complete.
 
 ## Pass Criteria
 
@@ -121,6 +126,8 @@ A provider is a serious production candidate only if it passes all of these on m
 - Route calculation works for both route cases, or there is a clearly acceptable fallback strategy.
 - Touch pan and pinch zoom are usable.
 - Errors are understandable and the list/static fallback keeps the trip usable.
+
+Google Maps is not a mainland-accessible production candidate unless it separately passes mainland no-VPN testing. In this POC it is primarily a reference for overseas address, search, and route correctness.
 
 ## Stop Point
 
