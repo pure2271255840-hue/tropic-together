@@ -108,6 +108,39 @@ function loadScript(src: string, id: string, callbackName?: "__tropicMapPocBaidu
   });
 }
 
+function loadJsonp(src: string) {
+  return new Promise<any>((resolve, reject) => {
+    const callbackName = `__tropicMapPocJsonp_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2)}`;
+    const separator = src.includes("?") ? "&" : "?";
+    const script = document.createElement("script");
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out loading Tencent Maps WebService JSONP response."));
+    }, 15000);
+
+    function cleanup() {
+      window.clearTimeout(timeout);
+      delete (window as any)[callbackName];
+      script.remove();
+    }
+
+    (window as any)[callbackName] = (response: any) => {
+      cleanup();
+      resolve(response);
+    };
+
+    script.async = true;
+    script.src = `${src}${separator}output=jsonp&callback=${callbackName}`;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Failed to load Tencent Maps WebService JSONP response."));
+    };
+    document.head.appendChild(script);
+  });
+}
+
 function statusLabel(status: PocTestStatus) {
   switch (status) {
     case "passed":
@@ -140,6 +173,10 @@ function statusClass(status: PocTestStatus) {
 
 function formatCoordinate(coordinate: Coordinate) {
   return `${coordinate.lat.toFixed(5)}, ${coordinate.lng.toFixed(5)} (${coordinate.system})`;
+}
+
+function formatPlaceAddress(item: PlaceSearchResult) {
+  return item.address ?? item.city ?? "No address returned";
 }
 
 function amapErrorDetail(response: any) {
@@ -182,6 +219,83 @@ function tencentLatLngFromCoordinate(coordinate: Coordinate) {
   return new window.TMap.LatLng(coordinate.lat, coordinate.lng);
 }
 
+function tencentCoordinateString(coordinate: Coordinate) {
+  return `${coordinate.lat},${coordinate.lng}`;
+}
+
+function tencentRectangleBoundary(center: Coordinate, delta: number) {
+  return `rectangle(${center.lat - delta},${center.lng - delta},${center.lat + delta},${
+    center.lng + delta
+  })`;
+}
+
+function tencentWebServiceKey() {
+  return (
+    mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_TENCENT_WEBSERVICE_KEY ??
+    mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_TENCENT_KEY
+  );
+}
+
+function tencentWebServiceUrl(path: string, params: Record<string, string | undefined>) {
+  const key = tencentWebServiceKey();
+
+  if (!key) {
+    throw new Error("Tencent Maps WebService key is unavailable for this POC diagnostic.");
+  }
+
+  const url = new URL(path, "https://apis.map.qq.com");
+  url.searchParams.set("key", key);
+
+  Object.entries(params).forEach(([name, value]) => {
+    if (value) {
+      url.searchParams.set(name, value);
+    }
+  });
+
+  return url.toString();
+}
+
+function tencentFormattedAddress(item: any) {
+  const adInfo = item?.ad_info ?? item?.adInfo;
+  const administrativeAddress = [adInfo?.province, adInfo?.city, adInfo?.district]
+    .filter(Boolean)
+    .join(" / ");
+
+  return item?.address ?? item?.addr ?? (administrativeAddress || undefined);
+}
+
+function tencentPlaceSearchResult(item: any, providerId = "tencent"): PlaceSearchResult {
+  return {
+    providerId,
+    placeId: item.id,
+    name: item.title ?? item.name,
+    address: tencentFormattedAddress(item),
+    city: item.ad_info?.city ?? item.adInfo?.city,
+    coordinate: item.location ? tencentCoordinateFromLatLng(item.location) : undefined,
+    rawConfidence: "medium"
+  };
+}
+
+function tencentDecodeCompressedPolyline(rawPath: any[]): Coordinate[] {
+  const values = rawPath.map(Number);
+
+  if (values.length < 2 || values.some((value) => !Number.isFinite(value))) {
+    return [];
+  }
+
+  for (let index = 2; index < values.length; index += 1) {
+    values[index] = values[index - 2] + values[index] / 1000000;
+  }
+
+  const path: Coordinate[] = [];
+
+  for (let index = 0; index < values.length - 1; index += 2) {
+    path.push({ lat: values[index], lng: values[index + 1], system: "wgs84" });
+  }
+
+  return path;
+}
+
 function tencentSearchReferencePlace(query: string) {
   const normalizedQuery = query.toLowerCase();
 
@@ -212,7 +326,7 @@ function tencentSearchCityName(query: string) {
 }
 
 function tencentSearchResults(response: any) {
-  return response?.data ?? response?.result?.data ?? response?.result?.pois ?? [];
+  return response?.data ?? response?.result?.data ?? response?.result?.pois ?? response?.cluster ?? [];
 }
 
 function tencentRouteCandidates(response: any) {
@@ -221,6 +335,10 @@ function tencentRouteCandidates(response: any) {
 
 function tencentRoutePath(route: any): Coordinate[] {
   const rawPath = route?.polyline ?? route?.path ?? route?.paths ?? [];
+
+  if (Array.isArray(rawPath) && rawPath.every((point) => typeof point === "number")) {
+    return tencentDecodeCompressedPolyline(rawPath);
+  }
 
   return rawPath
     .map((point: any) => tencentCoordinateFromLatLng(point))
@@ -806,28 +924,79 @@ export function MapPocClient() {
       }
     }
 
+    if (data.length === 0 && tencentWebServiceKey()) {
+      data = await runTencentWebServiceSearch();
+    }
+
     if (data.length === 0 && lastError) {
       throw new Error(tencentErrorDetail("place search", lastError));
     }
 
-    setSearchResults(
-      data.slice(0, 5).map((item: any) => ({
-        providerId: "tencent",
-        placeId: item.id,
-        name: item.title ?? item.name,
-        address: item.address,
-        city: item.ad_info?.city,
-        coordinate: item.location ? tencentCoordinateFromLatLng(item.location) : undefined,
-        rawConfidence: "medium"
-      }))
-    );
+    setSearchResults(data.slice(0, 5).map((item: any) => tencentPlaceSearchResult(item)));
     patchResult({
       placeSearch: data.length > 0 ? "passed" : "failed"
     });
 
     if (data.length === 0) {
-      appendVisibleError(`Tencent Maps place search returned no Malaysia results for "${searchQuery}".`);
+      appendVisibleError(
+        `Tencent Maps place search returned no Malaysia results for "${searchQuery}" via JavaScript service or WebService diagnostics.`
+      );
     }
+  }
+
+  async function runTencentWebServiceSearch() {
+    const referencePlace = tencentSearchReferencePlace(searchQuery);
+    const keyword = referencePlace?.name ?? searchQuery;
+    const cityName = tencentSearchCityName(searchQuery);
+    const attempts = [
+      { boundary: `region(${cityName},1)`, keyword },
+      { boundary: "region(Malaysia,1)", keyword },
+      referencePlace
+        ? {
+            boundary: `nearby(${tencentCoordinateString(referencePlace.coordinate)},5000,1)`,
+            keyword
+          }
+        : undefined,
+      referencePlace
+        ? {
+            boundary: tencentRectangleBoundary(referencePlace.coordinate, 0.08),
+            keyword
+          }
+        : undefined
+    ].filter(Boolean) as Array<{ boundary: string; keyword: string }>;
+    let lastError: unknown;
+
+    for (const attempt of attempts) {
+      try {
+        const response = await loadJsonp(
+          tencentWebServiceUrl("/ws/place/v1/search", {
+            boundary: attempt.boundary,
+            keyword: attempt.keyword,
+            page_size: "5",
+            page_index: "1"
+          })
+        );
+        const status = response?.status;
+
+        if (status && Number(status) !== 0) {
+          throw response;
+        }
+
+        const data = tencentSearchResults(response);
+
+        if (data.length > 0) {
+          return data;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) {
+      throw new Error(tencentErrorDetail("WebService place search", lastError));
+    }
+
+    return [];
   }
 
   async function runBaiduSearch() {
@@ -939,15 +1108,36 @@ export function MapPocClient() {
     }
 
     const service = new DrivingCtor();
-    const response = await service.search({
-      from: tencentLatLngFromCoordinate(selectedRoute.origin.coordinate),
-      to: tencentLatLngFromCoordinate(selectedRoute.destination.coordinate),
-      waypoints: selectedRoute.waypoints.map(
-        (place) => tencentLatLngFromCoordinate(place.coordinate)
-      )
-    }).catch((error: unknown) => {
-      throw new Error(tencentErrorDetail("route calculation", error));
-    });
+    let response: any;
+    let jsRouteError: unknown;
+
+    try {
+      response = await service.search({
+        from: tencentLatLngFromCoordinate(selectedRoute.origin.coordinate),
+        to: tencentLatLngFromCoordinate(selectedRoute.destination.coordinate),
+        waypoints: selectedRoute.waypoints.map(
+          (place) => tencentLatLngFromCoordinate(place.coordinate)
+        )
+      });
+    } catch (error) {
+      jsRouteError = error;
+    }
+
+    const jsStatus = response?.status ?? response?.result?.status;
+
+    if (!response || (jsStatus && Number(jsStatus) !== 0)) {
+      response = await runTencentWebServiceRoute().catch((error: unknown) => {
+        throw new Error(
+          `${tencentErrorDetail(
+            "route calculation",
+            response ?? jsRouteError
+          )} WebService diagnostic also failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+    }
+
     const status = response?.status ?? response?.result?.status;
 
     if (status && Number(status) !== 0) {
@@ -1014,6 +1204,51 @@ export function MapPocClient() {
     if (!route) {
       appendVisibleError(`Tencent Maps route calculation returned no route for "${selectedRoute.label}".`);
     }
+  }
+
+  async function runTencentWebServiceRoute() {
+    const baseParams = {
+        from: tencentCoordinateString(selectedRoute.origin.coordinate),
+        to: tencentCoordinateString(selectedRoute.destination.coordinate),
+        policy: "LEAST_TIME"
+    };
+    const waypointParams = selectedRoute.waypoints.length
+      ? {
+          ...baseParams,
+          waypoints: selectedRoute.waypoints
+            .map((place) => tencentCoordinateString(place.coordinate))
+            .join(";")
+        }
+      : baseParams;
+    const attempts = [waypointParams, baseParams];
+    let lastError: unknown;
+
+    for (let index = 0; index < attempts.length; index += 1) {
+      const params = attempts[index];
+
+      try {
+        const response = await loadJsonp(
+          tencentWebServiceUrl("/ws/direction/v1/driving/", params)
+        );
+        const status = response?.status;
+
+        if (status && Number(status) !== 0) {
+          throw response;
+        }
+
+        if (index > 0 && selectedRoute.waypoints.length > 0) {
+          appendVisibleError(
+            "Tencent Maps WebService route succeeded only after removing waypoints."
+          );
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw new Error(tencentErrorDetail("WebService route calculation", lastError));
   }
 
   async function runBaiduRoute() {
@@ -1176,7 +1411,7 @@ export function MapPocClient() {
                 {searchResults.map((item) => (
                   <div className="rounded border p-2 text-sm" key={`${item.providerId}-${item.placeId ?? item.name}`}>
                     <div className="font-medium text-stone-900">{item.name}</div>
-                    <div className="text-stone-600">{item.address ?? "No address returned"}</div>
+                    <div className="text-stone-600">{formatPlaceAddress(item)}</div>
                     {item.coordinate ? (
                       <div className="text-xs text-stone-500">{formatCoordinate(item.coordinate)}</div>
                     ) : null}
