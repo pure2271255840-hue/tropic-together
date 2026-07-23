@@ -50,6 +50,60 @@ const networkConditions: NetworkCondition[] = [
 ];
 
 const defaultCenter: Coordinate = { lat: 5.55, lng: 108.2, system: "wgs84" };
+const viewModes: ViewMode[] = ["interactive", "list", "static", "external", "unavailable"];
+
+const providerLabels: Record<string, string> = {
+  amap: "高德地图",
+  tencent: "腾讯地图",
+  baidu: "百度地图",
+  raster: "自定义瓦片",
+  "fallback-list": "列表兜底"
+};
+
+const providerReasonLabels: Record<string, string> = {
+  amap: "国内可访问候选方；本 POC 用来验证马来西亚地点搜索、路线规划、瓦片和移动端交互是否可用。",
+  tencent: "国内可访问候选方；本 POC 重点验证腾讯地图在马来西亚目的地、路线和移动端场景下的覆盖能力。",
+  baidu: "国内可访问基线；用于提前暴露坐标系和马来西亚覆盖风险。",
+  raster: "供应商无关的瓦片兜底路径；搜索和路线规划不在这个模式内验证。",
+  "fallback-list": "产品韧性基线；当地图瓦片、搜索或路线不可用时，用户仍应能浏览地点列表。"
+};
+
+const networkConditionLabels: Record<NetworkCondition, string> = {
+  "Mainland China / no VPN": "中国大陆 / 无 VPN",
+  "Mainland China / VPN": "中国大陆 / 有 VPN",
+  Overseas: "海外网络"
+};
+
+const viewModeLabels: Record<ViewMode, string> = {
+  interactive: "交互地图",
+  list: "列表兜底",
+  static: "静态地图",
+  external: "外部导航",
+  unavailable: "不可用状态"
+};
+
+const placeNameLabels: Record<string, string> = {
+  "George Town": "乔治市 (George Town)",
+  "Armenian Street": "亚美尼亚街 (Armenian Street)",
+  "Chew Jetty": "姓周桥 (Chew Jetty)",
+  "Kek Lok Si Temple": "极乐寺 (Kek Lok Si Temple)",
+  "ChinaHouse Penang": "ChinaHouse 槟城",
+  "Kota Kinabalu Waterfront": "亚庇海滨 (Kota Kinabalu Waterfront)",
+  "Jesselton Point": "杰瑟尔顿码头 (Jesselton Point)",
+  "Tanjung Aru Beach": "丹绒亚路海滩 (Tanjung Aru Beach)",
+  "Gaya Street": "加雅街 (Gaya Street)",
+  "Kota Kinabalu International Airport": "亚庇国际机场 (Kota Kinabalu International Airport)"
+};
+
+const routeLabels: Record<string, string> = {
+  "penang-heritage-walk": "乔治市 -> 亚美尼亚街 -> 姓周桥",
+  "kk-coastal-route": "杰瑟尔顿码头 -> 加雅街 -> 丹绒亚路海滩"
+};
+
+const cityLabels: Record<TestPlace["city"], string> = {
+  penang: "槟城",
+  "kota-kinabalu": "亚庇"
+};
 
 function createInitialResult(
   providerId: string,
@@ -80,7 +134,7 @@ function loadScript(src: string, id: string, callbackName?: "__tropicMapPocBaidu
     }
 
     const timeout = window.setTimeout(() => {
-      reject(new Error(`Timed out loading ${id}`));
+      reject(new Error(`加载 ${id} 超时。`));
     }, 15000);
 
     if (callbackName) {
@@ -102,7 +156,7 @@ function loadScript(src: string, id: string, callbackName?: "__tropicMapPocBaidu
     };
     script.onerror = () => {
       window.clearTimeout(timeout);
-      reject(new Error(`Failed to load ${id}`));
+      reject(new Error(`加载 ${id} 失败。`));
     };
     document.head.appendChild(script);
   });
@@ -117,7 +171,7 @@ function loadJsonp(src: string) {
     const script = document.createElement("script");
     const timeout = window.setTimeout(() => {
       cleanup();
-      reject(new Error("Timed out loading Tencent Maps WebService JSONP response."));
+      reject(new Error("腾讯地图 WebService JSONP 响应超时。"));
     }, 15000);
 
     function cleanup() {
@@ -135,7 +189,7 @@ function loadJsonp(src: string) {
     script.src = `${src}${separator}output=jsonp&callback=${callbackName}`;
     script.onerror = () => {
       cleanup();
-      reject(new Error("Failed to load Tencent Maps WebService JSONP response."));
+      reject(new Error("腾讯地图 WebService JSONP 响应加载失败。"));
     };
     document.head.appendChild(script);
   });
@@ -144,15 +198,15 @@ function loadJsonp(src: string) {
 function statusLabel(status: PocTestStatus) {
   switch (status) {
     case "passed":
-      return "passed";
+      return "已通过";
     case "failed":
-      return "failed";
+      return "未通过";
     case "running":
-      return "running";
+      return "测试中";
     case "unsupported":
-      return "unsupported";
+      return "不支持";
     default:
-      return "not run";
+      return "未测试";
   }
 }
 
@@ -176,7 +230,63 @@ function formatCoordinate(coordinate: Coordinate) {
 }
 
 function formatPlaceAddress(item: PlaceSearchResult) {
-  return item.address ?? item.city ?? "No address returned";
+  if (item.address) {
+    return item.address;
+  }
+
+  if (item.city) {
+    return `未返回详细地址；仅返回行政区：${item.city}`;
+  }
+
+  if (item.coordinate) {
+    return `未返回详细地址；仅返回坐标：${formatCoordinate(item.coordinate)}`;
+  }
+
+  return "未返回详细地址";
+}
+
+function formatProviderLabel(provider: MapProvider) {
+  return providerLabels[provider.id] ?? provider.label;
+}
+
+function formatProviderReason(provider: MapProvider) {
+  return providerReasonLabels[provider.id] ?? provider.includedBecause;
+}
+
+function formatPlaceName(place: Pick<TestPlace, "name"> | PlaceSearchResult) {
+  return placeNameLabels[place.name] ?? place.name;
+}
+
+function formatRouteLabel(routeRequest: RouteRequest) {
+  return routeLabels[routeRequest.id] ?? routeRequest.label;
+}
+
+function formatPlaceCity(place: TestPlace) {
+  return cityLabels[place.city] ?? place.city;
+}
+
+function formatDistance(distanceMeters?: number) {
+  if (!Number.isFinite(distanceMeters)) {
+    return "未返回";
+  }
+
+  if ((distanceMeters ?? 0) >= 1000) {
+    return `${((distanceMeters ?? 0) / 1000).toFixed(1)} 公里`;
+  }
+
+  return `${Math.round(distanceMeters ?? 0)} 米`;
+}
+
+function formatDuration(durationSeconds?: number) {
+  if (!Number.isFinite(durationSeconds)) {
+    return "未返回";
+  }
+
+  return `${Math.round((durationSeconds ?? 0) / 60)} 分钟`;
+}
+
+function formatTimestamp(value: string) {
+  return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "未记录";
 }
 
 function amapErrorDetail(response: any) {
@@ -193,15 +303,22 @@ function tencentErrorDetail(scope: string, error: unknown) {
   const status = source?.status ?? source?.code ?? source?.errCode;
   const message =
     source?.message ?? source?.msg ?? source?.detail ?? source?.error ?? error;
-  const details = [status ? `status ${String(status)}` : "", message ? String(message) : ""]
+  const details = [status ? `状态码 ${String(status)}` : "", message ? String(message) : ""]
     .filter(Boolean)
-    .join(": ");
+    .join("：");
+  const statusNumber = Number(status);
+  const statusHint =
+    statusNumber === 348
+      ? "；含义：腾讯路线服务没有接受这组起终点坐标。若坐标在马来西亚，通常需要确认海外版/海外路线服务权限，当前国内 WebService 通道不能证明路线可用。"
+      : statusNumber === 121
+        ? "；含义：这个 key 今日调用量已达到上限，需要等配额恢复或提高配额后再测。"
+        : "";
   const suffix =
     /servicesk|signature|sig|签名|鉴权|key/i.test(details)
-      ? " This browser-only POC uses only a public JavaScript API key; do not add service secrets to NEXT_PUBLIC_*."
+      ? " 这是浏览器 POC，只能使用公开 JavaScript API key；不要把服务端 secret 放进 NEXT_PUBLIC_*。"
       : "";
 
-  return `Tencent Maps ${scope} failed${details ? `: ${details}` : "."}${suffix}`;
+  return `腾讯地图${scope}失败${details ? `：${details}` : "。"}${statusHint}${suffix}`;
 }
 
 function tencentCoordinateFromLatLng(value: any): Coordinate | undefined {
@@ -240,7 +357,7 @@ function tencentWebServiceUrl(path: string, params: Record<string, string | unde
   const key = tencentWebServiceKey();
 
   if (!key) {
-    throw new Error("Tencent Maps WebService key is unavailable for this POC diagnostic.");
+    throw new Error("腾讯地图 WebService key 不可用，无法运行这个 POC 诊断。");
   }
 
   const url = new URL(path, "https://apis.map.qq.com");
@@ -257,7 +374,11 @@ function tencentWebServiceUrl(path: string, params: Record<string, string | unde
 
 function tencentFormattedAddress(item: any) {
   const adInfo = item?.ad_info ?? item?.adInfo;
-  const administrativeAddress = [adInfo?.province, adInfo?.city, adInfo?.district]
+  const administrativeAddress = [
+    item?.province ?? adInfo?.province,
+    item?.city ?? adInfo?.city,
+    item?.district ?? adInfo?.district
+  ]
     .filter(Boolean)
     .join(" / ");
 
@@ -270,7 +391,13 @@ function tencentPlaceSearchResult(item: any, providerId = "tencent"): PlaceSearc
     placeId: item.id,
     name: item.title ?? item.name,
     address: tencentFormattedAddress(item),
-    city: item.ad_info?.city ?? item.adInfo?.city,
+    city:
+      item.city ??
+      item.district ??
+      item.ad_info?.city ??
+      item.adInfo?.city ??
+      item.ad_info?.district ??
+      item.adInfo?.district,
     coordinate: item.location ? tencentCoordinateFromLatLng(item.location) : undefined,
     rawConfidence: "medium"
   };
@@ -491,7 +618,7 @@ export function MapPocClient() {
           markerDisplay: "not-run",
           wgs84PinAccuracy: "not-run",
           visibleErrors: [
-            `Missing environment placeholder value: ${selectedProvider.requiredEnv.join(", ")}`
+            `缺少环境变量：${selectedProvider.requiredEnv.join(", ")}`
           ]
         });
         return;
@@ -525,7 +652,7 @@ export function MapPocClient() {
         }
       } catch (error) {
         if (!cancelled) {
-          const message = error instanceof Error ? error.message : "Unknown map initialization error";
+          const message = error instanceof Error ? error.message : "未知地图初始化错误。";
           patchResult({
             mapLoaded: "failed",
             tileRendering: "failed",
@@ -564,7 +691,7 @@ export function MapPocClient() {
     );
 
     if (!window.AMap) {
-      throw new Error("AMap SDK loaded but window.AMap is unavailable.");
+      throw new Error("高德地图 SDK 已加载，但 window.AMap 不可用。");
     }
 
     const map = new window.AMap.Map(container, {
@@ -587,7 +714,7 @@ export function MapPocClient() {
         position: [place.coordinate.lng, place.coordinate.lat],
         title: place.name
       });
-      marker.setLabel?.({ content: place.name, direction: "top" });
+      marker.setLabel?.({ content: formatPlaceName(place), direction: "top" });
     });
 
     if (provider.id !== selectedProviderId) {
@@ -614,11 +741,11 @@ export function MapPocClient() {
         "map-poc-tencent"
       );
     } catch (error) {
-      throw new Error(tencentErrorDetail("SDK load", error));
+      throw new Error(tencentErrorDetail("SDK 加载", error));
     }
 
     if (!window.TMap) {
-      throw new Error("Tencent Maps SDK loaded but window.TMap is unavailable.");
+      throw new Error("腾讯地图 SDK 已加载，但 window.TMap 不可用。");
     }
 
     const TMap = window.TMap;
@@ -643,7 +770,7 @@ export function MapPocClient() {
       geometries: mapPocTestPlaces.map((place) => ({
         id: place.id,
         position: tencentLatLngFromCoordinate(place.coordinate),
-        properties: { title: place.name }
+        properties: { title: formatPlaceName(place) }
       })),
       map
     });
@@ -654,7 +781,7 @@ export function MapPocClient() {
           id: `label-${place.id}`,
           styleId: "label",
           position: tencentLatLngFromCoordinate(place.coordinate),
-          content: place.name
+          content: formatPlaceName(place)
         })),
         map,
         styles: {
@@ -707,7 +834,7 @@ export function MapPocClient() {
     );
 
     if (!window.BMap) {
-      throw new Error("Baidu Maps SDK loaded but window.BMap is unavailable.");
+      throw new Error("百度地图 SDK 已加载，但 window.BMap 不可用。");
     }
 
     const BMap = window.BMap;
@@ -727,7 +854,7 @@ export function MapPocClient() {
       const point = new BMap.Point(place.coordinate.lng, place.coordinate.lat);
       const marker = new BMap.Marker(point);
       map.addOverlay(marker);
-      marker.setTitle?.(place.name);
+      marker.setTitle?.(formatPlaceName(place));
     });
 
     if (provider.id !== selectedProviderId) {
@@ -743,7 +870,7 @@ export function MapPocClient() {
     const template = mapPocProviderEnvValues.NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE;
 
     if (!template) {
-      throw new Error("Missing NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE.");
+      throw new Error("缺少 NEXT_PUBLIC_MAP_POC_RASTER_TILE_TEMPLATE。");
     }
 
     const zoom = 11;
@@ -780,7 +907,7 @@ export function MapPocClient() {
           if (failedTiles === totalTiles) {
             patchResult({
               tileRendering: "failed",
-              visibleErrors: ["Raster tile template loaded zero tiles."]
+              visibleErrors: ["自定义瓦片模板没有成功加载任何瓦片。"]
             });
           }
         };
@@ -794,7 +921,7 @@ export function MapPocClient() {
       const marker = document.createElement("div");
       marker.className =
         "absolute h-3 w-3 rounded-full border-2 border-white bg-red-600 shadow";
-      marker.title = place.name;
+      marker.title = formatPlaceName(place);
       marker.style.left = `${50 + (world.x - centerWorld.x) * 33.333}%`;
       marker.style.top = `${50 + (world.y - centerWorld.y) * 33.333}%`;
       wrapper.appendChild(marker);
@@ -811,7 +938,7 @@ export function MapPocClient() {
       patchResult({
         placeSearch: "failed",
         visibleErrors: [
-          `Cannot run place search; missing ${selectedProvider.requiredEnv.join(", ")}`
+          `无法运行地点搜索，缺少环境变量：${selectedProvider.requiredEnv.join(", ")}`
         ]
       });
       return;
@@ -830,7 +957,7 @@ export function MapPocClient() {
         patchResult({ placeSearch: "unsupported" });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown place search error";
+      const message = error instanceof Error ? error.message : "未知地点搜索错误。";
       patchResult({ placeSearch: "failed" });
       appendVisibleError(message);
     }
@@ -838,7 +965,7 @@ export function MapPocClient() {
 
   async function runAmapSearch() {
     if (!window.AMap?.PlaceSearch) {
-      throw new Error("AMap PlaceSearch plugin is unavailable.");
+      throw new Error("高德地点搜索插件不可用。");
     }
 
     const search = new window.AMap.PlaceSearch({ pageSize: 5 });
@@ -846,7 +973,7 @@ export function MapPocClient() {
     await new Promise<void>((resolve, reject) => {
       search.search(searchQuery, (status: string, response: any) => {
         if (status !== "complete") {
-          reject(new Error(`AMap place search failed: ${status}${amapErrorDetail(response)}`));
+          reject(new Error(`高德地点搜索失败：${status}${amapErrorDetail(response)}`));
           return;
         }
 
@@ -874,7 +1001,7 @@ export function MapPocClient() {
     const SearchCtor = window.TMap?.service?.Search;
 
     if (!SearchCtor) {
-      throw new Error("Tencent Maps Search service is unavailable in the loaded SDK.");
+      throw new Error("腾讯地图 SDK 中未提供地点搜索服务。");
     }
 
     const service = new SearchCtor({ pageIndex: 1, pageSize: 5 });
@@ -899,7 +1026,7 @@ export function MapPocClient() {
     }
 
     if (attempts.length === 0) {
-      throw new Error("Tencent Maps Search service loaded without searchRegion.");
+      throw new Error("腾讯地图地点搜索服务未提供 searchRegion 方法。");
     }
 
     let data: any[] = [];
@@ -929,7 +1056,7 @@ export function MapPocClient() {
     }
 
     if (data.length === 0 && lastError) {
-      throw new Error(tencentErrorDetail("place search", lastError));
+      throw new Error(tencentErrorDetail("地点搜索", lastError));
     }
 
     setSearchResults(data.slice(0, 5).map((item: any) => tencentPlaceSearchResult(item)));
@@ -939,7 +1066,7 @@ export function MapPocClient() {
 
     if (data.length === 0) {
       appendVisibleError(
-        `Tencent Maps place search returned no Malaysia results for "${searchQuery}" via JavaScript service or WebService diagnostics.`
+        `腾讯地图地点搜索未返回马来西亚结果：${searchQuery}。JavaScript 服务和 WebService 诊断都没有拿到可用 POI。`
       );
     }
   }
@@ -993,7 +1120,7 @@ export function MapPocClient() {
     }
 
     if (lastError) {
-      throw new Error(tencentErrorDetail("WebService place search", lastError));
+      throw new Error(tencentErrorDetail("WebService 地点搜索", lastError));
     }
 
     return [];
@@ -1001,7 +1128,7 @@ export function MapPocClient() {
 
   async function runBaiduSearch() {
     if (!window.BMap?.LocalSearch) {
-      throw new Error("Baidu LocalSearch is unavailable.");
+      throw new Error("百度 LocalSearch 不可用。");
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -1045,7 +1172,7 @@ export function MapPocClient() {
     if (!hasRequiredMapPocEnv(selectedProvider)) {
       patchResult({
         routeCalculation: "failed",
-        visibleErrors: [`Cannot run route test; missing ${selectedProvider.requiredEnv.join(", ")}`]
+        visibleErrors: [`无法运行路线规划，缺少环境变量：${selectedProvider.requiredEnv.join(", ")}`]
       });
       return;
     }
@@ -1063,7 +1190,7 @@ export function MapPocClient() {
         patchResult({ routeCalculation: "unsupported" });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown route error";
+      const message = error instanceof Error ? error.message : "未知路线规划错误。";
       patchResult({ routeCalculation: "failed" });
       appendVisibleError(message);
     }
@@ -1071,7 +1198,7 @@ export function MapPocClient() {
 
   async function runAmapRoute() {
     if (!window.AMap?.Driving) {
-      throw new Error("AMap Driving plugin is unavailable.");
+      throw new Error("高德驾车路线插件不可用。");
     }
 
     const driving = new window.AMap.Driving({ map: mapInstanceRef.current });
@@ -1082,7 +1209,7 @@ export function MapPocClient() {
     await new Promise<void>((resolve, reject) => {
       driving.search(points, (status: string, response: any) => {
         if (status !== "complete") {
-          reject(new Error(`AMap route calculation failed: ${status}${amapErrorDetail(response)}`));
+          reject(new Error(`高德路线规划失败：${status}${amapErrorDetail(response)}`));
           return;
         }
 
@@ -1104,7 +1231,7 @@ export function MapPocClient() {
     const DrivingCtor = window.TMap?.service?.Driving;
 
     if (!DrivingCtor) {
-      throw new Error("Tencent Maps Driving service is unavailable in the loaded SDK.");
+      throw new Error("腾讯地图 SDK 中未提供驾车路线服务。");
     }
 
     const service = new DrivingCtor();
@@ -1129,9 +1256,9 @@ export function MapPocClient() {
       response = await runTencentWebServiceRoute().catch((error: unknown) => {
         throw new Error(
           `${tencentErrorDetail(
-            "route calculation",
+            "路线计算",
             response ?? jsRouteError
-          )} WebService diagnostic also failed: ${
+          )} WebService 诊断也失败：${
             error instanceof Error ? error.message : String(error)
           }`
         );
@@ -1141,7 +1268,7 @@ export function MapPocClient() {
     const status = response?.status ?? response?.result?.status;
 
     if (status && Number(status) !== 0) {
-      throw new Error(tencentErrorDetail("route calculation", response));
+      throw new Error(tencentErrorDetail("路线计算", response));
     }
 
     const route = tencentRouteCandidates(response)[0];
@@ -1184,10 +1311,10 @@ export function MapPocClient() {
       mapInstanceRef.current.setCenter?.(tencentLatLngFromCoordinate(midpoint));
       mapInstanceRef.current.setZoom?.(13);
     } else if (route && path.length === 0) {
-      appendVisibleError("Tencent Maps route succeeded but returned no drawable polyline.");
+      appendVisibleError("腾讯地图路线规划成功，但没有返回可绘制的路线线条。");
     } else if (route) {
       appendVisibleError(
-        "Tencent Maps route succeeded but the loaded SDK does not expose drawable polyline classes."
+        "腾讯地图路线规划成功，但当前 SDK 未暴露可绘制路线线条的类。"
       );
     }
 
@@ -1202,7 +1329,7 @@ export function MapPocClient() {
     patchResult({ routeCalculation: route ? "passed" : "failed" });
 
     if (!route) {
-      appendVisibleError(`Tencent Maps route calculation returned no route for "${selectedRoute.label}".`);
+      appendVisibleError(`腾讯地图路线规划没有返回路线：${formatRouteLabel(selectedRoute)}。`);
     }
   }
 
@@ -1238,7 +1365,7 @@ export function MapPocClient() {
 
         if (index > 0 && selectedRoute.waypoints.length > 0) {
           appendVisibleError(
-            "Tencent Maps WebService route succeeded only after removing waypoints."
+            "腾讯地图 WebService 去掉途经点后才成功；原始多点路线需要单独评估。"
           );
         }
 
@@ -1248,12 +1375,12 @@ export function MapPocClient() {
       }
     }
 
-    throw new Error(tencentErrorDetail("WebService route calculation", lastError));
+    throw new Error(tencentErrorDetail("WebService 路线计算", lastError));
   }
 
   async function runBaiduRoute() {
     if (!window.BMap?.DrivingRoute) {
-      throw new Error("Baidu DrivingRoute is unavailable.");
+      throw new Error("百度 DrivingRoute 不可用。");
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -1299,12 +1426,11 @@ export function MapPocClient() {
           <AlertTriangle className="mt-0.5 h-5 w-5 flex-none text-amber-700" aria-hidden />
           <div className="min-w-0">
             <h1 className="text-xl font-semibold text-amber-950">
-              Internal Map Provider POC
+              内部地图供应商 POC
             </h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-900">
-              Non-production test surface for mainland-China accessibility. It does not modify
-              the existing trip UI, does not choose a production provider, and should be validated
-              on real mainland mobile networks before any recommendation.
+              这是仅用于中国大陆可访问性验证的非生产测试页。它不修改现有旅行界面，
+              不决定生产供应商；任何结论都需要在真实大陆移动网络下完成验证。
             </p>
           </div>
         </div>
@@ -1313,10 +1439,10 @@ export function MapPocClient() {
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
         <div className="space-y-4">
           <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <SectionTitle icon={<MapPinned className="h-4 w-4" />} title="Provider test controls" />
+            <SectionTitle icon={<MapPinned className="h-4 w-4" />} title="供应商测试控制" />
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm">
-                <span className="font-medium text-stone-700">Selected provider</span>
+                <span className="font-medium text-stone-700">当前供应商</span>
                 <select
                   className="w-full rounded border bg-white px-3 py-2"
                   value={selectedProviderId}
@@ -1324,53 +1450,53 @@ export function MapPocClient() {
                 >
                   {mapPocProviders.map((provider) => (
                     <option key={provider.id} value={provider.id}>
-                      {provider.label}
+                      {formatProviderLabel(provider)}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="space-y-1 text-sm">
-                <span className="font-medium text-stone-700">Network condition</span>
+                <span className="font-medium text-stone-700">网络环境</span>
                 <select
                   className="w-full rounded border bg-white px-3 py-2"
                   value={networkCondition}
                   onChange={(event) => setNetworkCondition(event.target.value as NetworkCondition)}
                 >
                   {networkConditions.map((condition) => (
-                    <option key={condition}>{condition}</option>
+                    <option key={condition} value={condition}>
+                      {networkConditionLabels[condition]}
+                    </option>
                   ))}
                 </select>
               </label>
             </div>
 
             <p className="mt-3 text-sm leading-6 text-stone-600">
-              {selectedProvider.includedBecause}
+              {formatProviderReason(selectedProvider)}
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {(["interactive", "list", "static", "external", "unavailable"] as ViewMode[]).map(
-                (mode) => (
-                  <button
-                    className={`rounded border px-3 py-2 text-sm ${
-                      viewMode === mode
-                        ? "border-teal-700 bg-teal-700 text-white"
-                        : "border-stone-300 bg-white text-stone-700"
-                    }`}
-                    key={mode}
-                    onClick={() => setViewMode(mode)}
-                    type="button"
-                  >
-                    {mode}
-                  </button>
-                )
-              )}
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              {viewModes.map((mode) => (
+                <button
+                  className={`min-h-10 rounded border px-3 py-2 text-center text-sm font-medium ${
+                    viewMode === mode
+                      ? "border-teal-700 bg-teal-700 text-white"
+                      : "border-stone-300 bg-white text-stone-700"
+                  }`}
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  type="button"
+                >
+                  {viewModeLabels[mode]}
+                </button>
+              ))}
               <button
-                className="inline-flex items-center gap-2 rounded border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
                 onClick={() => setReloadCount((count) => count + 1)}
                 type="button"
               >
                 <RefreshCw className="h-4 w-4" aria-hidden />
-                reload
+                刷新
               </button>
             </div>
           </div>
@@ -1391,9 +1517,9 @@ export function MapPocClient() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-lg border bg-white p-4 shadow-sm">
-              <SectionTitle icon={<Search className="h-4 w-4" />} title="Place search test" />
+              <SectionTitle icon={<Search className="h-4 w-4" />} title="地点搜索测试" />
               <label className="mt-3 block space-y-1 text-sm">
-                <span className="font-medium text-stone-700">Search query</span>
+                <span className="font-medium text-stone-700">搜索词</span>
                 <input
                   className="w-full rounded border px-3 py-2"
                   value={searchQuery}
@@ -1401,16 +1527,17 @@ export function MapPocClient() {
                 />
               </label>
               <button
-                className="mt-3 rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white"
+                className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded border border-teal-800 bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm"
                 onClick={() => void runPlaceSearch()}
                 type="button"
               >
-                Run place search
+                <Search className="h-4 w-4" aria-hidden />
+                运行地点搜索
               </button>
               <div className="mt-3 space-y-2">
                 {searchResults.map((item) => (
                   <div className="rounded border p-2 text-sm" key={`${item.providerId}-${item.placeId ?? item.name}`}>
-                    <div className="font-medium text-stone-900">{item.name}</div>
+                    <div className="font-medium text-stone-900">{formatPlaceName(item)}</div>
                     <div className="text-stone-600">{formatPlaceAddress(item)}</div>
                     {item.coordinate ? (
                       <div className="text-xs text-stone-500">{formatCoordinate(item.coordinate)}</div>
@@ -1421,9 +1548,9 @@ export function MapPocClient() {
             </div>
 
             <div className="rounded-lg border bg-white p-4 shadow-sm">
-              <SectionTitle icon={<Route className="h-4 w-4" />} title="Route calculation test" />
+              <SectionTitle icon={<Route className="h-4 w-4" />} title="路线规划测试" />
               <label className="mt-3 block space-y-1 text-sm">
-                <span className="font-medium text-stone-700">Route case</span>
+                <span className="font-medium text-stone-700">路线用例</span>
                 <select
                   className="w-full rounded border bg-white px-3 py-2"
                   value={selectedRouteId}
@@ -1431,29 +1558,36 @@ export function MapPocClient() {
                 >
                   {mapPocRouteRequests.map((routeRequest) => (
                     <option key={routeRequest.id} value={routeRequest.id}>
-                      {routeRequest.label}
+                      {formatRouteLabel(routeRequest)}
                     </option>
                   ))}
                 </select>
               </label>
               <button
-                className="mt-3 rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white"
+                className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded border border-teal-800 bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm"
                 onClick={() => void runRouteTest()}
                 type="button"
               >
-                Run route test
+                <Route className="h-4 w-4" aria-hidden />
+                运行路线规划
               </button>
+              {selectedProvider.kind === "tencent" ? (
+                <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-900">
+                  若马来西亚路线返回状态码 348，表示当前腾讯路线接口没有接受这组海外起终点坐标；
+                  这应记录为海外路线验证未通过，而不是前端把错误吞掉。
+                </p>
+              ) : null}
               <div className="mt-3 rounded border bg-stone-50 p-3 text-sm">
-                <div className="font-medium text-stone-900">{selectedRoute.label}</div>
+                <div className="font-medium text-stone-900">{formatRouteLabel(selectedRoute)}</div>
                 <ol className="mt-2 space-y-1 text-stone-600">
                   {routePlaces(selectedRoute).map((place) => (
-                    <li key={place.id}>{place.name}</li>
+                    <li key={place.id}>{formatPlaceName(place)}</li>
                   ))}
                 </ol>
                 {routeResult ? (
                   <div className="mt-3 text-xs text-stone-600">
-                    Distance: {routeResult.distanceMeters ?? "not returned"} / Duration:{" "}
-                    {routeResult.durationSeconds ?? "not returned"}
+                    距离：{formatDistance(routeResult.distanceMeters)} / 时间：
+                    {formatDuration(routeResult.durationSeconds)}
                   </div>
                 ) : null}
               </div>
@@ -1463,26 +1597,26 @@ export function MapPocClient() {
 
         <aside className="space-y-4">
           <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="POC results panel" />
+            <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="POC 结果面板" />
             <dl className="mt-4 space-y-3 text-sm">
-              <ResultRow label="selected provider" value={selectedProvider.label} />
-              <ResultRow label="map loaded" status={result.mapLoaded} />
-              <ResultRow label="tile rendering" status={result.tileRendering} />
-              <ResultRow label="WGS84 pin accuracy" status={result.wgs84PinAccuracy} />
-              <ResultRow label="marker display" status={result.markerDisplay} />
-              <ResultRow label="place search" status={result.placeSearch} />
-              <ResultRow label="route calculation" status={result.routeCalculation} />
-              <ResultRow label="mobile interaction" status={result.mobileInteraction} />
-              <ResultRow label="network condition" value={result.networkCondition} />
+              <ResultRow label="当前供应商" value={formatProviderLabel(selectedProvider)} />
+              <ResultRow label="地图加载" status={result.mapLoaded} />
+              <ResultRow label="瓦片渲染" status={result.tileRendering} />
+              <ResultRow label="WGS84 点位准确性" status={result.wgs84PinAccuracy} />
+              <ResultRow label="Marker 显示" status={result.markerDisplay} />
+              <ResultRow label="地点搜索" status={result.placeSearch} />
+              <ResultRow label="路线规划" status={result.routeCalculation} />
+              <ResultRow label="移动端交互" status={result.mobileInteraction} />
+              <ResultRow label="网络环境" value={networkConditionLabels[result.networkCondition]} />
               <ResultRow
-                label="timestamp"
-                value={result.timestamp ? new Date(result.timestamp).toLocaleString() : "not recorded"}
+                label="测试时间"
+                value={formatTimestamp(result.timestamp)}
               />
             </dl>
 
             <div className="mt-4 space-y-2">
               <label className="block text-sm">
-                <span className="font-medium text-stone-700">Manual WGS84 pin check</span>
+                <span className="font-medium text-stone-700">人工检查 WGS84 点位</span>
                 <select
                   className="mt-1 w-full rounded border bg-white px-3 py-2"
                   value={result.wgs84PinAccuracy}
@@ -1490,55 +1624,55 @@ export function MapPocClient() {
                     patchResult({ wgs84PinAccuracy: event.target.value as PocTestStatus })
                   }
                 >
-                  <option value="not-run">not run</option>
-                  <option value="running">needs visual check</option>
-                  <option value="passed">looks accurate</option>
-                  <option value="failed">visible offset/problem</option>
+                  <option value="not-run">未测试</option>
+                  <option value="running">需要肉眼检查</option>
+                  <option value="passed">看起来准确</option>
+                  <option value="failed">有明显偏移/问题</option>
                 </select>
               </label>
               <button
-                className="rounded border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700"
+                className="min-h-10 rounded border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700"
                 onClick={markMobileInteraction}
                 type="button"
               >
-                Mark mobile interaction passed
+                标记移动端交互已通过
               </button>
             </div>
 
             <label className="mt-4 block text-sm">
-              <span className="font-medium text-stone-700">Manual tester notes</span>
+              <span className="font-medium text-stone-700">人工测试备注</span>
               <textarea
                 className="mt-1 min-h-28 w-full rounded border px-3 py-2"
-                placeholder="Record mainland no-VPN behavior, slow tiles, wrong pins, search misses, route errors..."
+                placeholder="记录中国大陆无 VPN 表现、瓦片慢、点位偏移、搜索漏结果、路线错误等..."
                 value={manualNotes}
                 onChange={(event) => setManualNotes(event.target.value)}
               />
             </label>
 
             <div className="mt-4">
-              <div className="text-sm font-medium text-stone-700">Visible error messages</div>
+              <div className="text-sm font-medium text-stone-700">可见错误信息</div>
               {result.visibleErrors.length > 0 ? (
                 <ul className="mt-2 space-y-2">
                   {result.visibleErrors.map((error) => (
-                    <li className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800" key={error}>
+                    <li className="break-words rounded border border-red-200 bg-red-50 p-2 text-xs leading-5 text-red-800" key={error}>
                       {error}
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="mt-2 rounded border bg-stone-50 p-2 text-xs text-stone-500">
-                  No visible errors recorded.
+                  暂无可见错误。
                 </p>
               )}
             </div>
           </div>
 
           <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <SectionTitle icon={<LocateFixed className="h-4 w-4" />} title="Fixed WGS84 test pins" />
+            <SectionTitle icon={<LocateFixed className="h-4 w-4" />} title="固定 WGS84 测试点" />
             <div className="mt-3 space-y-2">
               {mapPocTestPlaces.map((place) => (
                 <div className="rounded border p-2 text-sm" key={place.id}>
-                  <div className="font-medium text-stone-900">{place.name}</div>
+                  <div className="font-medium text-stone-900">{formatPlaceName(place)}</div>
                   <div className="text-xs text-stone-500">{formatCoordinate(place.coordinate)}</div>
                 </div>
               ))}
@@ -1560,9 +1694,11 @@ function ResultRow({
   value?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-stone-600">{label}</dt>
-      <dd className="text-right text-stone-900">{status ? <StatusPill status={status} /> : value}</dd>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+      <dt className="min-w-0 text-stone-600">{label}</dt>
+      <dd className="min-w-0 text-right text-stone-900">
+        {status ? <StatusPill status={status} /> : value}
+      </dd>
     </div>
   );
 }
@@ -1570,15 +1706,15 @@ function ResultRow({
 function ListOnlyFallback() {
   return (
     <div className="space-y-3">
-      <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="List-only fallback prototype" />
+      <SectionTitle icon={<ListChecks className="h-4 w-4" />} title="仅列表兜底原型" />
       <p className="text-sm text-stone-600">
-        Users can still browse grouped places when map tiles or provider APIs are unavailable.
+        当地图瓦片或供应商 API 不可用时，用户仍然可以浏览分组后的地点列表。
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         {mapPocTestPlaces.map((place) => (
           <div className="rounded border bg-white p-3" key={place.id}>
-            <div className="text-sm font-medium text-stone-900">{place.name}</div>
-            <div className="text-xs text-stone-500">{place.city}</div>
+            <div className="text-sm font-medium text-stone-900">{formatPlaceName(place)}</div>
+            <div className="text-xs text-stone-500">{formatPlaceCity(place)}</div>
             <div className="mt-1 text-xs text-stone-500">{formatCoordinate(place.coordinate)}</div>
           </div>
         ))}
@@ -1590,16 +1726,16 @@ function ListOnlyFallback() {
 function StaticMapPlaceholder() {
   return (
     <div className="space-y-3">
-      <SectionTitle icon={<MapPinned className="h-4 w-4" />} title="Static-map placeholder prototype" />
+      <SectionTitle icon={<MapPinned className="h-4 w-4" />} title="静态地图占位原型" />
       <div className="relative min-h-[360px] overflow-hidden rounded-lg border bg-[linear-gradient(135deg,#e8f2ee,#fff7e8)]">
         <div className="absolute left-[18%] top-[48%] rounded-full bg-teal-700 px-3 py-1 text-xs text-white">
-          Penang cluster
+          槟城地点组
         </div>
         <div className="absolute right-[15%] top-[36%] rounded-full bg-coral px-3 py-1 text-xs text-white">
-          Kota Kinabalu cluster
+          亚庇地点组
         </div>
         <div className="absolute bottom-4 left-4 max-w-sm rounded border bg-white/90 p-3 text-sm text-stone-700">
-          Static image or pre-rendered map can be served from our own domain if live maps fail.
+          如果实时地图失败，可以从自有域名提供静态图片或预渲染地图。
         </div>
       </div>
     </div>
@@ -1611,11 +1747,11 @@ function ExternalNavigationPlaceholder() {
     <div className="space-y-3">
       <SectionTitle
         icon={<ExternalLink className="h-4 w-4" />}
-        title="External-navigation-link placeholder"
+        title="外部导航链接占位"
       />
       <p className="text-sm text-stone-600">
-        Configure <code>NEXT_PUBLIC_MAP_POC_EXTERNAL_NAV_URL_TEMPLATE</code> with placeholders
-        like <code>{"{lat}"}</code>, <code>{"{lng}"}</code>, and <code>{"{name}"}</code>.
+        可配置 <code>NEXT_PUBLIC_MAP_POC_EXTERNAL_NAV_URL_TEMPLATE</code>，使用
+        <code>{"{lat}"}</code>、<code>{"{lng}"}</code>、<code>{"{name}"}</code> 作为占位符。
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         {mapPocTestPlaces.map((place) => {
@@ -1623,7 +1759,7 @@ function ExternalNavigationPlaceholder() {
 
           return (
             <div className="rounded border bg-white p-3" key={place.id}>
-              <div className="text-sm font-medium text-stone-900">{place.name}</div>
+              <div className="text-sm font-medium text-stone-900">{formatPlaceName(place)}</div>
               {url ? (
                 <a
                   className="mt-2 inline-flex items-center gap-1 text-sm text-teal-700"
@@ -1631,11 +1767,11 @@ function ExternalNavigationPlaceholder() {
                   rel="noreferrer"
                   target="_blank"
                 >
-                  Open navigation placeholder
+                  打开外部导航占位
                   <ExternalLink className="h-3 w-3" aria-hidden />
                 </a>
               ) : (
-                <div className="mt-2 text-xs text-stone-500">External URL template not configured.</div>
+                <div className="mt-2 text-xs text-stone-500">未配置外部导航 URL 模板。</div>
               )}
             </div>
           );
@@ -1648,9 +1784,9 @@ function ExternalNavigationPlaceholder() {
 function MapUnavailableState() {
   return (
     <div className="space-y-4">
-      <SectionTitle icon={<AlertTriangle className="h-4 w-4" />} title="Map unavailable state" />
+      <SectionTitle icon={<AlertTriangle className="h-4 w-4" />} title="地图不可用状态" />
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-        Map is unavailable. Place browsing remains available below.
+        地图当前不可用。下方仍保留地点浏览能力。
       </div>
       <ListOnlyFallback />
     </div>
