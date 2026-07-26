@@ -1,6 +1,58 @@
 import type { TravelPlace } from "./types";
 
-export function destinationFor(place: TravelPlace) {
+export type MapDestination = Pick<
+  TravelPlace,
+  "name" | "address" | "city" | "coordinate" | "mapUrl"
+>;
+
+export function normalizedMapUrl(value?: string) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function locationInputParts(
+  value: string,
+  currentAddress = "",
+  currentMapUrl?: string
+) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return { address: "", mapUrl: undefined };
+  }
+
+  const mapUrl = normalizedMapUrl(trimmedValue);
+
+  if (mapUrl) {
+    return {
+      address: currentAddress.trim(),
+      mapUrl
+    };
+  }
+
+  return {
+    address: trimmedValue,
+    mapUrl:
+      trimmedValue === currentAddress.trim()
+        ? normalizedMapUrl(currentMapUrl)
+        : undefined
+  };
+}
+
+export function destinationFor(place: MapDestination) {
   if (place.coordinate) {
     return `${place.coordinate.lat},${place.coordinate.lng}`;
   }
@@ -8,19 +60,23 @@ export function destinationFor(place: TravelPlace) {
   return [place.name, place.address, place.city].filter(Boolean).join(", ");
 }
 
-export function googleMapsSearchUrl(place: TravelPlace) {
+export function externalMapUrl(place: MapDestination) {
+  return normalizedMapUrl(place.mapUrl) ?? googleMapsSearchUrl(place);
+}
+
+export function googleMapsSearchUrl(place: MapDestination) {
   const query = encodeURIComponent(destinationFor(place));
 
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
-export function googleMapsDirectionsUrl(place: TravelPlace) {
+export function googleMapsDirectionsUrl(place: MapDestination) {
   const destination = encodeURIComponent(destinationFor(place));
 
   return `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
 }
 
-export function appleMapsSearchUrl(place: TravelPlace) {
+export function appleMapsSearchUrl(place: MapDestination) {
   const query = encodeURIComponent(place.name);
 
   if (place.coordinate) {
@@ -30,13 +86,13 @@ export function appleMapsSearchUrl(place: TravelPlace) {
   return `https://maps.apple.com/?q=${encodeURIComponent(destinationFor(place))}`;
 }
 
-export function appleMapsDirectionsUrl(place: TravelPlace) {
+export function appleMapsDirectionsUrl(place: MapDestination) {
   const destination = encodeURIComponent(destinationFor(place));
 
   return `https://maps.apple.com/?daddr=${destination}`;
 }
 
-export function googleMapsRouteUrl(places: TravelPlace[]) {
+export function googleMapsRouteUrl(places: MapDestination[]) {
   const routePlaces = places.filter(Boolean);
 
   if (routePlaces.length === 0) {
@@ -44,7 +100,7 @@ export function googleMapsRouteUrl(places: TravelPlace[]) {
   }
 
   if (routePlaces.length === 1) {
-    return googleMapsDirectionsUrl(routePlaces[0]);
+    return externalMapUrl(routePlaces[0]);
   }
 
   const origin = encodeURIComponent(destinationFor(routePlaces[0]));

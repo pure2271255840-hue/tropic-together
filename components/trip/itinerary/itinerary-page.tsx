@@ -15,6 +15,7 @@ import {
   Plus,
   Route,
   RotateCcw,
+  Settings2,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -28,10 +29,16 @@ import {
   testAccountTripChangeEvent,
   type TestAccountTripChangeDetail
 } from "@/components/trip/phase1/test-account-shortcut-events";
+import { useAuthSession } from "@/features/auth/use-auth-session";
+import type { AuthUser } from "@/features/auth/types";
+import { setActiveTripMemberId } from "@/features/trip/active-member";
 import {
   appleMapsDirectionsUrl,
+  externalMapUrl,
   googleMapsDirectionsUrl,
-  googleMapsRouteUrl
+  googleMapsRouteUrl,
+  locationInputParts,
+  type MapDestination
 } from "@/features/trip/navigation-links";
 import {
   deleteTripData,
@@ -40,6 +47,7 @@ import {
   saveTripData
 } from "@/features/trip/trip-storage";
 import { createSeedTripData } from "@/features/trip/seed-data";
+import { createInviteCode, invitePath } from "@/features/trip/invite-code";
 import {
   buildPlaceRankings,
   formatDateLabel,
@@ -82,6 +90,14 @@ type NewTripForm = {
   name: string;
   startDate: string;
   endDate: string;
+  hotelLocation: string;
+};
+
+type TripSettingsForm = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  hotelLocation: string;
 };
 
 function defaultItemForm(dayId: string): ItemFormState {
@@ -97,6 +113,7 @@ function defaultItemForm(dayId: string): ItemFormState {
 }
 
 export function ItineraryPage({ tripId }: ItineraryPageProps) {
+  const auth = useAuthSession();
   const [tripGroups, setTripGroups] = useState<TripGroupSummary[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [showVoteModal, setShowVoteModal] = useState(false);
@@ -104,6 +121,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const [managedDayId, setManagedDayId] = useState<string | null>(null);
   const [showManageItineraryModal, setShowManageItineraryModal] = useState(false);
   const [showNewTripModal, setShowNewTripModal] = useState(false);
+  const [showTripSettingsModal, setShowTripSettingsModal] = useState(false);
   const [aiModalMode, setAiModalMode] = useState<"generate" | "organize" | null>(
     null
   );
@@ -112,7 +130,14 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const [newTripForm, setNewTripForm] = useState<NewTripForm>({
     name: "",
     startDate: "",
-    endDate: ""
+    endDate: "",
+    hotelLocation: ""
+  });
+  const [tripSettingsForm, setTripSettingsForm] = useState<TripSettingsForm>({
+    name: "",
+    startDate: "",
+    endDate: "",
+    hotelLocation: ""
   });
   const workingTripId = selectedTripId ?? tripId;
   const { data, actions } = useLocalTripStore(workingTripId);
@@ -198,9 +223,39 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
     setNewTripForm({
       name: "",
       startDate: data.trip.startDate,
-      endDate: data.trip.endDate
+      endDate: data.trip.endDate,
+      hotelLocation: ""
     });
     setShowNewTripModal(true);
+  }
+
+  function openTripSettingsModal() {
+    setTripSettingsForm({
+      name: data.trip.name,
+      startDate: data.trip.startDate,
+      endDate: data.trip.endDate,
+      hotelLocation: data.trip.hotelAddress ?? data.trip.hotelMapUrl ?? ""
+    });
+    setShowTripSettingsModal(true);
+  }
+
+  function submitTripSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const hotelLocation = locationInputParts(
+      tripSettingsForm.hotelLocation,
+      data.trip.hotelAddress,
+      data.trip.hotelMapUrl
+    );
+
+    actions.updateTripSettings({
+      name: tripSettingsForm.name,
+      startDate: tripSettingsForm.startDate,
+      endDate: tripSettingsForm.endDate,
+      hotelAddress: hotelLocation.address,
+      hotelMapUrl: hotelLocation.mapUrl
+    });
+    setShowTripSettingsModal(false);
+    void refreshTripGroups();
   }
 
   async function importSeedTrip() {
@@ -220,7 +275,12 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   async function createTripGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!newTripForm.name.trim() || !newTripForm.startDate || !newTripForm.endDate) {
+    if (
+      !auth.user ||
+      !newTripForm.name.trim() ||
+      !newTripForm.startDate ||
+      !newTripForm.endDate
+    ) {
       return;
     }
 
@@ -230,21 +290,36 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-")
       .replace(/^-|-$/g, "") || "trip"}-${Date.now().toString(36)}`;
     const nextData = createSeedTripData(slug);
+    const ownerMember: TripMember = {
+      id: `member-${auth.user.id}`,
+      appUserId: auth.user.id,
+      displayName: auth.user.username,
+      role: "owner",
+      color: "teal"
+    };
 
     nextData.trip.name = newTripForm.name.trim();
     nextData.trip.subtitle = "新的行程，先收集地点，再生成行程草稿。";
+    nextData.trip.ownerMemberId = ownerMember.id;
     nextData.trip.startDate = newTripForm.startDate;
     nextData.trip.endDate = newTripForm.endDate;
     nextData.trip.phase = "collecting_places";
-    nextData.trip.inviteUrl = `https://tropic.local/trip/${slug}/join`;
+    nextData.trip.inviteCode = createInviteCode();
+    nextData.trip.inviteUrl = invitePath(nextData.trip.inviteCode);
+    const hotelLocation = locationInputParts(newTripForm.hotelLocation);
+    nextData.trip.hotelAddress = hotelLocation.address || undefined;
+    nextData.trip.hotelMapUrl = hotelLocation.mapUrl;
     nextData.places = [];
     nextData.placeVotes = [];
+    nextData.members = [ownerMember];
+    nextData.currentMemberId = ownerMember.id;
     nextData.itineraryVersions = [];
     nextData.currentItineraryVersionId = "";
     nextData.itineraryVotes = [];
     nextData.updatedAt = new Date().toISOString();
 
     await saveTripData(nextData);
+    setActiveTripMemberId(slug, ownerMember.id);
     setTripGroups(await listTripGroups(tripId));
     setSelectedTripId(slug);
     setShowNewTripModal(false);
@@ -317,6 +392,8 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       {!selectedTripId ? (
         <TripGroupList
           tripGroups={tripGroups}
+          currentUser={auth.user}
+          isUserLoading={auth.isLoading}
           onOpenTrip={openTripGroup}
           onCreateTrip={openNewTripModal}
           onImportSeedTrip={importSeedTrip}
@@ -325,6 +402,8 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       ) : activeVersion ? (
         <ItineraryDetail
           version={activeVersion}
+          hotelAddress={data.trip.hotelAddress}
+          hotelMapUrl={data.trip.hotelMapUrl}
           placeById={placeById}
           currentMember={currentMember}
           members={data.members}
@@ -339,6 +418,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           }}
           onAddItem={openAddItem}
           onOrganizeWithAi={() => setAiModalMode("organize")}
+          onOpenSettings={openTripSettingsModal}
           onConfirmFinal={() => actions.confirmItineraryVersion(activeVersion.id)}
           onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
           onManageItinerary={() => setShowManageItineraryModal(true)}
@@ -358,6 +438,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           data={data}
           isOwner={isOwner}
           onBack={backToTripGroups}
+          onOpenSettings={openTripSettingsModal}
           onGenerateAi={() => setAiModalMode("generate")}
         />
       )}
@@ -525,6 +606,14 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
             value={newTripForm.endDate}
             onChange={(event) => updateNewTrip("endDate", event.target.value)}
           />
+          <input
+            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            placeholder="酒店地址或地图链接（可选）"
+            value={newTripForm.hotelLocation}
+            onChange={(event) =>
+              updateNewTrip("hotelLocation", event.target.value)
+            }
+          />
           <Button
             type="submit"
             disabled={
@@ -534,6 +623,72 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
             }
           >
             创建并进入行程
+          </Button>
+        </form>
+      </Modal>
+
+      <Modal
+        open={showTripSettingsModal}
+        title="行程设置"
+        description={data.trip.name}
+        onClose={() => setShowTripSettingsModal(false)}
+      >
+        <form className="grid gap-3" onSubmit={submitTripSettings}>
+          <input
+            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            placeholder="行程名称"
+            value={tripSettingsForm.name}
+            onChange={(event) =>
+              setTripSettingsForm((current) => ({
+                ...current,
+                name: event.target.value
+              }))
+            }
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              type="date"
+              value={tripSettingsForm.startDate}
+              onChange={(event) =>
+                setTripSettingsForm((current) => ({
+                  ...current,
+                  startDate: event.target.value
+                }))
+              }
+            />
+            <input
+              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              type="date"
+              value={tripSettingsForm.endDate}
+              onChange={(event) =>
+                setTripSettingsForm((current) => ({
+                  ...current,
+                  endDate: event.target.value
+                }))
+              }
+            />
+          </div>
+          <input
+            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            placeholder="酒店地址或地图链接（可选）"
+            value={tripSettingsForm.hotelLocation}
+            onChange={(event) =>
+              setTripSettingsForm((current) => ({
+                ...current,
+                hotelLocation: event.target.value
+              }))
+            }
+          />
+          <Button
+            type="submit"
+            disabled={
+              !tripSettingsForm.name.trim() ||
+              !tripSettingsForm.startDate ||
+              !tripSettingsForm.endDate
+            }
+          >
+            保存设置
           </Button>
         </form>
       </Modal>
@@ -550,22 +705,34 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
 
 function TripGroupList({
   tripGroups,
+  currentUser,
+  isUserLoading,
   onOpenTrip,
   onCreateTrip,
   onImportSeedTrip,
   onDeleteTrip
 }: {
   tripGroups: TripGroupSummary[];
+  currentUser: AuthUser | null;
+  isUserLoading: boolean;
   onOpenTrip: (tripId: string) => void;
   onCreateTrip: () => void;
   onImportSeedTrip: () => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
 }) {
+  const managedGroups = tripGroups.filter((group) =>
+    isTripManagedByUser(group, currentUser)
+  );
+  const joinedGroups = tripGroups.filter((group) =>
+    isTripJoinedByUser(group, currentUser)
+  );
+  const hasVisibleTrips = managedGroups.length > 0 || joinedGroups.length > 0;
+
   return (
     <>
       <section className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">所有行程</p>
+          <p className="text-sm font-medium text-muted-foreground">我的行程</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-normal">行程</h1>
         </div>
         <Button type="button" onClick={onCreateTrip}>
@@ -574,54 +741,33 @@ function TripGroupList({
         </Button>
       </section>
 
-      <section className="grid gap-3">
-        {tripGroups.map((group) => (
-          <article
-            key={group.id}
-            className="rounded-lg border border-border bg-white p-4 shadow-soft"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold leading-snug">{group.name}</h2>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {group.startDate} 至 {group.endDate}
-                </p>
-              </div>
-              <Badge tone="teal" className="shrink-0">
-                {planPhaseLabels[group.phase]}
-              </Badge>
-            </div>
+      {isUserLoading ? (
+        <section className="rounded-lg border border-border bg-white p-4 text-sm text-muted-foreground shadow-soft">
+          正在读取账号
+        </section>
+      ) : (
+        <>
+          <TripGroupSection
+            title="我管理的行程"
+            groups={managedGroups}
+            emptyText="暂时没有你管理的行程。"
+            canDelete
+            onOpenTrip={onOpenTrip}
+            onDeleteTrip={onDeleteTrip}
+          />
+          <TripGroupSection
+            title="我加入的行程"
+            groups={joinedGroups}
+            emptyText="暂时没有你加入的行程。"
+            canDelete={false}
+            onOpenTrip={onOpenTrip}
+            onDeleteTrip={onDeleteTrip}
+          />
+        </>
+      )}
 
-            <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-              <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
-              <SmallStat label="地点" value={`${group.placeCount}`} />
-            </div>
-            <MemberList members={group.members ?? []} />
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="button" onClick={() => onOpenTrip(group.id)}>
-                进入行程
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => copyText(group.inviteUrl)}
-              >
-                <Copy className="h-4 w-4" aria-hidden="true" />
-                复制邀请
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onDeleteTrip(group)}
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                删除
-              </Button>
-            </div>
-          </article>
-        ))}
-        {tripGroups.length === 0 ? (
+      {!isUserLoading && !hasVisibleTrips ? (
+        <section className="grid gap-3">
           <div className="rounded-lg border border-dashed border-border bg-white p-6 text-center shadow-soft">
             <p className="text-base font-semibold">还没有行程数据</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -638,9 +784,165 @@ function TripGroupList({
               </Button>
             </div>
           </div>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
     </>
+  );
+}
+
+function TripGroupSection({
+  title,
+  groups,
+  emptyText,
+  canDelete,
+  onOpenTrip,
+  onDeleteTrip
+}: {
+  title: string;
+  groups: TripGroupSummary[];
+  emptyText: string;
+  canDelete: boolean;
+  onOpenTrip: (tripId: string) => void;
+  onDeleteTrip: (group: TripGroupSummary) => void;
+}) {
+  return (
+    <section className="grid gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <Badge tone="outline">{groups.length}</Badge>
+      </div>
+      {groups.map((group) => (
+        <TripGroupCard
+          key={group.id}
+          group={group}
+          canDelete={canDelete}
+          onOpenTrip={onOpenTrip}
+          onDeleteTrip={onDeleteTrip}
+        />
+      ))}
+      {groups.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-white p-5 text-center text-sm text-muted-foreground shadow-soft">
+          {emptyText}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CopyInviteButton({ inviteUrl }: { inviteUrl: string }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle"
+  );
+
+  useEffect(() => {
+    if (copyState === "idle") {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setCopyState("idle"), 1800);
+
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
+
+  const isCopied = copyState === "copied";
+  const isFailed = copyState === "failed";
+
+  return (
+    <Button
+      type="button"
+      variant={isCopied ? "quiet" : "outline"}
+      onClick={async () => {
+        setCopyState((await copyText(inviteUrl)) ? "copied" : "failed");
+      }}
+    >
+      {isCopied ? (
+        <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+      ) : (
+        <Copy className="h-4 w-4" aria-hidden="true" />
+      )}
+      {isCopied ? "已复制链接" : isFailed ? "复制失败" : "复制邀请"}
+    </Button>
+  );
+}
+
+function HotelLocationLine({
+  address,
+  mapUrl
+}: {
+  address?: string;
+  mapUrl?: string;
+}) {
+  const hotelStop = hotelStopForLocation(address, mapUrl);
+
+  if (!hotelStop) {
+    return null;
+  }
+
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm leading-6 text-muted-foreground">
+      <MapPin className="h-4 w-4 shrink-0 text-teal" aria-hidden="true" />
+      <span>{address?.trim() || "酒店地图链接"}</span>
+      <a
+        className="focus-ring inline-flex items-center gap-1 rounded-md px-1 font-medium text-primary hover:underline"
+        href={externalMapUrl(hotelStop)}
+        rel="noreferrer"
+        target="_blank"
+      >
+        地图
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+      </a>
+    </p>
+  );
+}
+
+function TripGroupCard({
+  group,
+  canDelete,
+  onOpenTrip,
+  onDeleteTrip
+}: {
+  group: TripGroupSummary;
+  canDelete: boolean;
+  onOpenTrip: (tripId: string) => void;
+  onDeleteTrip: (group: TripGroupSummary) => void;
+}) {
+  return (
+    <article className="rounded-lg border border-border bg-white p-4 shadow-soft">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold leading-snug">{group.name}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {group.startDate} 至 {group.endDate}
+          </p>
+        </div>
+        <Badge tone="teal" className="shrink-0">
+          {planPhaseLabels[group.phase]}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 text-center">
+        <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
+        <SmallStat label="地点" value={`${group.placeCount}`} />
+      </div>
+      <MemberList members={group.members ?? []} />
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button type="button" onClick={() => onOpenTrip(group.id)}>
+          进入行程
+        </Button>
+        <CopyInviteButton inviteUrl={group.inviteUrl} />
+        {canDelete ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onDeleteTrip(group)}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            删除
+          </Button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
@@ -648,11 +950,13 @@ function TripGroupWorkspace({
   data,
   isOwner,
   onBack,
+  onOpenSettings,
   onGenerateAi
 }: {
   data: ReturnType<typeof useLocalTripStore>["data"];
   isOwner: boolean;
   onBack: () => void;
+  onOpenSettings: () => void;
   onGenerateAi: () => void;
 }) {
   return (
@@ -675,6 +979,10 @@ function TripGroupWorkspace({
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {data.trip.startDate} 至 {data.trip.endDate}
               </p>
+              <HotelLocationLine
+                address={data.trip.hotelAddress}
+                mapUrl={data.trip.hotelMapUrl}
+              />
             </div>
             <Badge tone="teal" className="shrink-0">
               {planPhaseLabels[data.trip.phase]}
@@ -682,14 +990,13 @@ function TripGroupWorkspace({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => copyText(data.trip.inviteUrl)}
-            >
-              <Copy className="h-4 w-4" aria-hidden="true" />
-              复制邀请
-            </Button>
+            <CopyInviteButton inviteUrl={data.trip.inviteUrl} />
+            {isOwner ? (
+              <Button type="button" variant="outline" onClick={onOpenSettings}>
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
+                行程设置
+              </Button>
+            ) : null}
             <Link
               className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium transition hover:bg-muted/70"
               href={`/trip/${data.trip.id}/places`}
@@ -739,6 +1046,8 @@ function TripGroupWorkspace({
 
 function ItineraryDetail({
   version,
+  hotelAddress,
+  hotelMapUrl,
   placeById,
   currentMember,
   members,
@@ -748,6 +1057,7 @@ function ItineraryDetail({
   onVote,
   onAddItem,
   onOrganizeWithAi,
+  onOpenSettings,
   onConfirmFinal,
   onCancelFinal,
   onManageItinerary,
@@ -755,6 +1065,8 @@ function ItineraryDetail({
   onDeleteDay
 }: {
   version: ItineraryVersion;
+  hotelAddress?: string;
+  hotelMapUrl?: string;
   placeById: Map<string, TravelPlace>;
   currentMember: TripMember;
   members: TripMember[];
@@ -769,13 +1081,19 @@ function ItineraryDetail({
   onVote: (value: ItineraryVoteValue) => void;
   onAddItem: (dayId?: string) => void;
   onOrganizeWithAi: () => void;
+  onOpenSettings: () => void;
   onConfirmFinal: () => void;
   onCancelFinal: () => void;
   onManageItinerary: () => void;
   onManageDay: (dayId: string) => void;
   onDeleteDay: (dayId: string) => void;
 }) {
-  const routePlaces = placesForVersion(version, placeById);
+  const routePlan = routePlanForVersion(
+    version,
+    placeById,
+    hotelAddress,
+    hotelMapUrl
+  );
   const currentVote = votes.find((vote) => vote.memberId === currentMember.id);
   const upCount = votes.filter((vote) => vote.value === "up").length;
   const downCount = votes.filter((vote) => vote.value === "down").length;
@@ -803,13 +1121,14 @@ function ItineraryDetail({
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 活动是可编辑草稿，成员可以手动调整。
               </p>
+              <HotelLocationLine address={hotelAddress} mapUrl={hotelMapUrl} />
             </div>
             <Badge tone={version.status === "final" ? "teal" : "outline"} className="shrink-0">
               {itineraryVersionStatusLabels[version.status]}
             </Badge>
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="mt-4 grid gap-2 sm:grid-cols-4">
             <Button
               type="button"
               variant={currentVote?.value === "up" ? "quiet" : "outline"}
@@ -826,8 +1145,14 @@ function ItineraryDetail({
               <ThumbsDown className="h-4 w-4" aria-hidden="true" />
               {itineraryVoteLabels.down} {downCount}
             </Button>
-            {routePlaces.length > 0 ? (
-              <ExternalNavLink href={googleMapsRouteUrl(routePlaces)} label="总路线" />
+            {isOwner ? (
+              <Button type="button" variant="outline" onClick={onOpenSettings}>
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
+                行程设置
+              </Button>
+            ) : null}
+            {routePlan ? (
+              <ExternalNavLink href={routePlan.href} label={routePlan.label} />
             ) : null}
           </div>
 
@@ -1522,6 +1847,7 @@ function PlacePicker({
 
         {rankings.map((ranking) => {
           const selected = selectedPlaceId === ranking.place.id;
+          const metaText = placeMetaText(ranking.place);
 
           return (
             <button
@@ -1548,17 +1874,18 @@ function PlacePicker({
                   {ranking.score} 分
                 </span>
               </div>
-              <p
-                className={cn(
-                  "text-xs leading-5",
-                  selected ? "text-primary-foreground/80" : "text-muted-foreground"
-                )}
-              >
-                {ranking.place.city} / {ranking.place.category}
-                {ranking.place.suggestedDuration
-                  ? ` / ${ranking.place.suggestedDuration}`
-                  : ""}
-              </p>
+              {metaText ? (
+                <p
+                  className={cn(
+                    "text-xs leading-5",
+                    selected
+                      ? "text-primary-foreground/80"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {metaText}
+                </p>
+              ) : null}
               <p
                 className={cn(
                   "text-xs leading-5",
@@ -1659,6 +1986,51 @@ function placesForVersion(
     .filter((place): place is TravelPlace => Boolean(place));
 }
 
+function routePlanForVersion(
+  version: ItineraryVersion,
+  placeById: Map<string, TravelPlace>,
+  hotelAddress?: string,
+  hotelMapUrl?: string
+) {
+  const routePlaces = placesForVersion(version, placeById);
+  const hotelStop = hotelStopForLocation(hotelAddress, hotelMapUrl);
+
+  if (hotelStop) {
+    const stops = [hotelStop, ...routePlaces];
+
+    return stops.length > 1
+      ? { href: googleMapsRouteUrl(stops), label: "总路线" }
+      : { href: externalMapUrl(hotelStop), label: "查看酒店" };
+  }
+
+  if (routePlaces.length > 1) {
+    return { href: googleMapsRouteUrl(routePlaces), label: "总路线" };
+  }
+
+  if (routePlaces.length === 1) {
+    return { href: externalMapUrl(routePlaces[0]), label: "查看地点" };
+  }
+
+  return null;
+}
+
+function hotelStopForLocation(
+  hotelAddress?: string,
+  hotelMapUrl?: string
+): MapDestination | null {
+  const address = hotelAddress?.trim();
+  const mapUrl = hotelMapUrl?.trim();
+
+  return address || mapUrl
+    ? {
+        name: "酒店",
+        address: address || mapUrl || "",
+        city: "",
+        mapUrl
+      }
+    : null;
+}
+
 function versionDateRange(version: ItineraryVersion) {
   const dates = version.days.map((day) => day.date).sort();
 
@@ -1684,6 +2056,74 @@ function memberName(members: TripMember[], memberId: string) {
   return members.find((member) => member.id === memberId)?.displayName ?? "成员";
 }
 
-function copyText(text: string) {
-  void navigator.clipboard?.writeText(text);
+function placeMetaText(place: TravelPlace) {
+  return [place.city, place.category, place.suggestedDuration]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function memberBelongsToUser(member: TripMember, user: AuthUser | null) {
+  if (!user) {
+    return false;
+  }
+
+  return (
+    member.appUserId === user.id ||
+    member.displayName.trim().toLowerCase() === user.username
+  );
+}
+
+function isTripManagedByUser(group: TripGroupSummary, user: AuthUser | null) {
+  return group.members.some(
+    (member) => member.role === "owner" && memberBelongsToUser(member, user)
+  );
+}
+
+function isTripJoinedByUser(group: TripGroupSummary, user: AuthUser | null) {
+  return group.members.some(
+    (member) => member.role !== "owner" && memberBelongsToUser(member, user)
+  );
+}
+
+async function copyText(text: string) {
+  const copyValue =
+    typeof window !== "undefined" && text.startsWith("/")
+      ? `${window.location.origin}${text}`
+      : text;
+
+  if (!copyValue) {
+    return false;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(copyValue);
+      return true;
+    }
+  } catch {
+    return fallbackCopyText(copyValue);
+  }
+
+  return fallbackCopyText(copyValue);
+}
+
+function fallbackCopyText(copyValue: string) {
+  if (typeof document === "undefined") {
+    return false;
+  }
+
+  const textarea = document.createElement("textarea");
+
+  textarea.value = copyValue;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }

@@ -24,7 +24,9 @@ import {
 } from "@/components/trip/phase1/test-account-shortcut-events";
 import {
   appleMapsDirectionsUrl,
-  googleMapsDirectionsUrl
+  externalMapUrl,
+  googleMapsDirectionsUrl,
+  locationInputParts
 } from "@/features/trip/navigation-links";
 import {
   buildPlaceRankings,
@@ -57,6 +59,8 @@ type PlaceFormState = {
   category: string;
   initialTag: PlaceInitialTag;
   address: string;
+  mapUrl: string;
+  location: string;
   notes: string;
   suggestedDuration: string;
   lat: string;
@@ -65,10 +69,12 @@ type PlaceFormState = {
 
 const emptyForm: PlaceFormState = {
   name: "",
-  city: "槟城",
-  category: "景点",
+  city: "",
+  category: "经典",
   initialTag: "nice_to_have",
   address: "",
+  mapUrl: "",
+  location: "",
   notes: "",
   suggestedDuration: "",
   lat: "",
@@ -80,6 +86,8 @@ const filters: Array<{ label: string; value: PlaceFilter }> = [
   { label: "排名", value: "ranking" }
 ];
 
+const placeCategoryOptions = ["经典", "餐饮", "咖啡", "自然", "购物", "交通"];
+
 function placeToForm(place: TravelPlace): PlaceFormState {
   return {
     name: place.name,
@@ -87,6 +95,8 @@ function placeToForm(place: TravelPlace): PlaceFormState {
     category: place.category,
     initialTag: place.initialTag,
     address: place.address,
+    mapUrl: place.mapUrl ?? "",
+    location: place.address || place.mapUrl || "",
     notes: place.notes,
     suggestedDuration: place.suggestedDuration,
     lat: place.coordinate ? String(place.coordinate.lat) : "",
@@ -94,16 +104,18 @@ function placeToForm(place: TravelPlace): PlaceFormState {
   };
 }
 
-function formToInput(form: PlaceFormState): PlaceInput {
+function formToInput(form: PlaceFormState, fallbackCity: string): PlaceInput {
   const lat = form.lat.trim() ? Number(form.lat) : undefined;
   const lng = form.lng.trim() ? Number(form.lng) : undefined;
+  const location = locationInputParts(form.location, form.address, form.mapUrl);
 
   return {
     name: form.name,
-    city: form.city,
-    category: form.category,
+    city: form.city.trim() || fallbackCity,
+    category: form.category || placeCategoryOptions[0],
     initialTag: form.initialTag,
-    address: form.address,
+    address: location.address,
+    mapUrl: location.mapUrl,
     notes: form.notes,
     suggestedDuration: form.suggestedDuration,
     lat,
@@ -181,14 +193,16 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!form.name.trim() || !form.city.trim() || !form.category.trim()) {
+    if (!form.name.trim()) {
       return;
     }
 
+    const input = formToInput(form, data.trip.destinations[0] ?? "");
+
     if (editingPlaceId) {
-      actions.updatePlace(editingPlaceId, formToInput(form));
+      actions.updatePlace(editingPlaceId, input);
     } else {
-      actions.addPlace(formToInput(form));
+      actions.addPlace(input);
       setFilter("pending");
     }
 
@@ -338,27 +352,23 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             value={form.name}
             onChange={(event) => updateForm("name", event.target.value)}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
-              placeholder="城市 / 区域"
-              value={form.city}
-              onChange={(event) => updateForm("city", event.target.value)}
-            />
-            <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
-              placeholder="分类"
-              value={form.category}
-              onChange={(event) => updateForm("category", event.target.value)}
-            />
+          <div className="flex flex-wrap gap-2">
+            {placeCategoryOptions.map((category) => (
+              <TagButton
+                key={category}
+                active={form.category === category}
+                label={category}
+                onClick={() => updateForm("category", category)}
+              />
+            ))}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <TagButton
+          <div className="flex flex-wrap gap-2">
+            <TinyTagButton
               active={form.initialTag === "must_go"}
               label="一定要去"
               onClick={() => updateForm("initialTag", "must_go")}
             />
-            <TagButton
+            <TinyTagButton
               active={form.initialTag === "nice_to_have"}
               label="还不错"
               onClick={() => updateForm("initialTag", "nice_to_have")}
@@ -372,9 +382,9 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
           />
           <input
             className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
-            placeholder="地址"
-            value={form.address}
-            onChange={(event) => updateForm("address", event.target.value)}
+            placeholder="地址或地图链接"
+            value={form.location}
+            onChange={(event) => updateForm("location", event.target.value)}
           />
           <textarea
             className="focus-ring min-h-20 rounded-lg border border-input bg-white px-3 py-2 text-sm"
@@ -382,23 +392,9 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             value={form.notes}
             onChange={(event) => updateForm("notes", event.target.value)}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
-              placeholder="纬度，可选"
-              value={form.lat}
-              onChange={(event) => updateForm("lat", event.target.value)}
-            />
-            <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
-              placeholder="经度，可选"
-              value={form.lng}
-              onChange={(event) => updateForm("lng", event.target.value)}
-            />
-          </div>
           <Button
             type="submit"
-            disabled={!form.name.trim() || !form.city.trim() || !form.category.trim()}
+            disabled={!form.name.trim()}
           >
             {editingPlaceId ? "保存地点" : "添加地点"}
           </Button>
@@ -478,6 +474,7 @@ function PlaceCard({
   const { place, votes } = ranking;
   const currentVote = votes.find((vote) => vote.memberId === currentMember.id);
   const addedBy = memberName(members, place.addedByMemberId);
+  const placeMeta = placeMetaText(place);
 
   return (
     <article className="rounded-lg border border-border bg-white p-4 shadow-soft">
@@ -489,10 +486,11 @@ function PlaceCard({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold leading-snug">{place.name}</h2>
           </div>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {place.city} / {place.category}
-            {place.suggestedDuration ? ` / ${place.suggestedDuration}` : ""}
-          </p>
+          {placeMeta ? (
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {placeMeta}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -519,10 +517,13 @@ function PlaceCard({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Button type="button" className="w-full" onClick={onVote}>
           {currentVote ? "修改投票" : "投票"}
         </Button>
+        {place.mapUrl ? (
+          <ExternalNavLink href={externalMapUrl(place)} label="地图" />
+        ) : null}
         <ExternalNavLink href={appleMapsDirectionsUrl(place)} label="Apple" />
         <ExternalNavLink href={googleMapsDirectionsUrl(place)} label="Google" />
         <Button type="button" variant="outline" className="w-full" onClick={onEdit}>
@@ -654,6 +655,31 @@ function TagButton({
   );
 }
 
+function TinyTagButton({
+  active,
+  label,
+  onClick
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "focus-ring h-8 rounded-md border px-2.5 text-xs font-medium transition",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-white text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+      )}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
 function ExternalNavLink({ href, label }: { href: string; label: string }) {
   return (
     <a
@@ -696,4 +722,10 @@ function MemberList({ members }: { members: TripMember[] }) {
 
 function memberName(members: TripMember[], memberId: string) {
   return members.find((member) => member.id === memberId)?.displayName ?? "成员";
+}
+
+function placeMetaText(place: TravelPlace) {
+  return [place.city, place.category, place.suggestedDuration]
+    .filter(Boolean)
+    .join(" / ");
 }

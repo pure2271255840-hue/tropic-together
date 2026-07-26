@@ -78,7 +78,7 @@ The current local UI is a technical base, not the final Phase 1 interaction mode
 
 Without Supabase environment variables, Phase 1 data is stored in browser localStorage under a `tropic-together:phase1:*` key.
 
-With Supabase configured, the app stores one row per trip in `public.trip_phase1_workspaces`, using `jsonb` for the current Phase 1 data shape. This keeps the frontend CRUD stable while Auth, membership, and a normalized schema are still being designed.
+With Supabase configured, the app stores one row per trip in `public.trip_phase1_workspaces`, using `jsonb` for the current Phase 1 data shape. Username/password test accounts are stored in `public.app_users` and sessions are stored in `public.app_sessions`.
 
 Supabase mode does not automatically recreate seed data after everything is deleted. To start an online test with realistic data, open the itinerary page and click `导入测试行程`. That imported trip is real Supabase data and can be edited or deleted.
 
@@ -89,6 +89,8 @@ Apply the migration:
 ```text
 supabase/migrations/20260726000000_trip_phase1_workspaces.sql
 supabase/migrations/20260726010000_grant_trip_phase1_workspace_access.sql
+supabase/migrations/20260726020000_username_password_auth.sql
+supabase/migrations/20260726030000_seed_noah_test_account.sql
 ```
 
 Then set:
@@ -96,16 +98,21 @@ Then set:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
 ```
 
-The current migration uses temporary permissive RLS policies for the prototype because the app does not have real authentication yet. Tighten these policies before production.
+`SUPABASE_SERVICE_ROLE_KEY` is only for Next.js API routes. Keep it server-side and do not prefix it with `NEXT_PUBLIC_`.
+
+The current trip workspace migration still uses temporary permissive RLS policies for the prototype. Tighten these policies before production so only real trip members can access a trip.
+
+The online test seed account is `noah` with password `123456`.
 
 ## Next Backend Steps
 
 The intended backend path is:
 
 1. Supabase JSON workspace storage for Phase 1.
-2. Anonymous Auth plus nickname join flow.
+2. Username/password test accounts plus real invite-code join flow.
 3. RLS policies so only trip members can access trip data.
 4. Normalized tables for trips, places, votes, days, and activities.
 5. Remote Supabase dev project.
@@ -118,7 +125,7 @@ Supabase will manage database, Auth, Storage, and optional Edge Functions. Next.
 - Embedded map SDKs
 - Google Maps API keys or Apple MapKit JS
 - Production Supabase project changes
-- Auth and RLS implementation
+- Production-grade Auth and RLS hardening
 - AI provider integration
 - File uploads, expenses, reminders, and push notifications
 

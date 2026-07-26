@@ -10,6 +10,7 @@ import type {
   PlaceVote,
   PlaceVoteValue,
   TripGroupSummary,
+  TripSettingsInput,
   TripPhase1Data
 } from "./types";
 
@@ -52,6 +53,7 @@ export function summarizeTripGroup(data: TripPhase1Data): TripGroupSummary {
     startDate: data.trip.startDate,
     endDate: data.trip.endDate,
     phase: data.trip.phase,
+    inviteCode: data.trip.inviteCode,
     inviteUrl: data.trip.inviteUrl,
     members: data.members,
     placeCount: data.places.length,
@@ -222,6 +224,7 @@ export function addPlaceToTrip(data: TripPhase1Data, input: PlaceInput) {
     category: input.category.trim(),
     initialTag: input.initialTag,
     address: input.address.trim(),
+    mapUrl: input.mapUrl?.trim() || undefined,
     notes: input.notes.trim(),
     suggestedDuration: input.suggestedDuration.trim(),
     coordinate:
@@ -254,6 +257,7 @@ export function updatePlaceInTrip(
           category: input.category.trim(),
           initialTag: input.initialTag,
           address: input.address.trim(),
+          mapUrl: input.mapUrl?.trim() || undefined,
           notes: input.notes.trim(),
           suggestedDuration: input.suggestedDuration.trim(),
           coordinate:
@@ -264,6 +268,23 @@ export function updatePlaceInTrip(
         }
       : place
   );
+  next.updatedAt = timestamp;
+
+  return next;
+}
+
+export function updateTripSettingsInTrip(
+  data: TripPhase1Data,
+  input: TripSettingsInput
+) {
+  const next = cloneData(data);
+  const timestamp = nowIso();
+
+  next.trip.name = input.name?.trim() || next.trip.name;
+  next.trip.startDate = input.startDate || next.trip.startDate;
+  next.trip.endDate = input.endDate || next.trip.endDate;
+  next.trip.hotelAddress = input.hotelAddress?.trim() || undefined;
+  next.trip.hotelMapUrl = input.hotelMapUrl?.trim() || undefined;
   next.updatedAt = timestamp;
 
   return next;

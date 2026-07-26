@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Home, MapPin, Plane } from "lucide-react";
+import { CalendarDays, Home, MapPin, Plane, UserRound } from "lucide-react";
 import { useLocalTripStore } from "@/features/trip/use-local-trip-store";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +40,8 @@ export function DesktopTripNav() {
       ready: true,
       badge: pendingItineraryCount
     },
-    { label: "地点", href: `${tripBase}/places`, icon: MapPin, ready: true, badge: 0 }
+    { label: "地点", href: `${tripBase}/places`, icon: MapPin, ready: true, badge: 0 },
+    { label: "我的", href: `${tripBase}/me`, icon: UserRound, ready: true, badge: 0 }
   ];
 
   return (

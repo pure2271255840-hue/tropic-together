@@ -1,6 +1,7 @@
 import type { TripPhase1Data } from "./types";
 
 const seedUpdatedAt = "2026-07-25T09:00:00+08:00";
+export const seedNoahAppUserId = "11111111-1111-4111-8111-111111111111";
 
 export function createSeedTripData(tripId: string): TripPhase1Data {
   const resolvedTripId = tripId || "penang-kota-kinabalu-2026";
@@ -16,11 +17,18 @@ export function createSeedTripData(tripId: string): TripPhase1Data {
       timezone: "Asia/Kuala_Lumpur",
       destinations: ["槟城", "乔治市", "哥打京那巴鲁", "沙巴海岛"],
       phase: "itinerary_voting",
-      inviteUrl: `https://tropic.local/trip/${resolvedTripId}/join`,
+      inviteCode: "PENANG26",
+      inviteUrl: "/join/PENANG26",
       hotelAddress: "George Town hotel / KK city hotel"
     },
     members: [
-      { id: "member-noah", displayName: "Noah", role: "owner", color: "teal" },
+      {
+        id: "member-noah",
+        appUserId: seedNoahAppUserId,
+        displayName: "Noah",
+        role: "owner",
+        color: "teal"
+      },
       { id: "member-mia", displayName: "Mia", role: "member", color: "coral" },
       { id: "member-yuki", displayName: "Yuki", role: "member", color: "sunset" },
       { id: "member-leo", displayName: "Leo", role: "member", color: "leaf" }

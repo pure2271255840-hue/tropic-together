@@ -7,6 +7,7 @@ import {
   testAccountTripChangeEvent,
   type TestAccountTripChangeDetail
 } from "@/components/trip/phase1/test-account-shortcut-events";
+import { setActiveTripMemberId } from "@/features/trip/active-member";
 import { useLocalTripStore } from "@/features/trip/use-local-trip-store";
 import type { TripMember } from "@/features/trip/types";
 import { cn } from "@/lib/utils";
@@ -84,6 +85,7 @@ export function TestAccountShortcut() {
       );
       const nextMember = data.members[(currentIndex + 1) % data.members.length];
 
+      setActiveTripMemberId(activeTripId, nextMember.id);
       actions.setCurrentMember(nextMember.id);
       setSwitchedMember(nextMember);
     }
@@ -91,7 +93,7 @@ export function TestAccountShortcut() {
     window.addEventListener("keydown", handleKeyDown);
 
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [actions, data.currentMemberId, data.members]);
+  }, [actions, activeTripId, data.currentMemberId, data.members]);
 
   if (!switchedMember) {
     return null;

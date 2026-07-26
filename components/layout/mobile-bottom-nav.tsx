@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Home, MapPin } from "lucide-react";
+import { CalendarDays, Home, MapPin, UserRound } from "lucide-react";
 import { useLocalTripStore } from "@/features/trip/use-local-trip-store";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +40,8 @@ export function MobileBottomNav() {
       ready: true,
       badge: pendingItineraryCount
     },
-    { label: "地点", href: `${tripBase}/places`, icon: MapPin, ready: true, badge: 0 }
+    { label: "地点", href: `${tripBase}/places`, icon: MapPin, ready: true, badge: 0 },
+    { label: "我的", href: `${tripBase}/me`, icon: UserRound, ready: true, badge: 0 }
   ];
 
   return (
@@ -48,7 +49,7 @@ export function MobileBottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_32px_rgba(22,47,54,0.08)] backdrop-blur lg:hidden"
       aria-label="底部导航"
     >
-      <div className="mx-auto grid max-w-md grid-cols-3 gap-1">
+      <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active =

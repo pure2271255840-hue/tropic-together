@@ -16,8 +16,13 @@ import {
   setPlaceVoteInTrip,
   updateItineraryDayInTrip,
   updateItineraryItemInTrip,
-  updatePlaceInTrip
+  updatePlaceInTrip,
+  updateTripSettingsInTrip
 } from "./local-storage-adapter";
+import {
+  getActiveTripMemberId,
+  setActiveTripMemberId
+} from "./active-member";
 import { createSeedTripData } from "./seed-data";
 import { loadTripData, resetTripData, saveTripData } from "./trip-storage";
 import type {
@@ -26,6 +31,7 @@ import type {
   ItineraryVoteValue,
   PlaceInput,
   PlaceVoteValue,
+  TripSettingsInput,
   TripPhase1Data
 } from "./types";
 
@@ -52,6 +58,19 @@ function notifyLocalTripDataChanged(data: TripPhase1Data) {
   );
 }
 
+function withActiveTripMember(data: TripPhase1Data) {
+  const activeMemberId = getActiveTripMemberId(data.trip.id);
+
+  if (
+    activeMemberId &&
+    data.members.some((member) => member.id === activeMemberId)
+  ) {
+    return { ...data, currentMemberId: activeMemberId };
+  }
+
+  return data;
+}
+
 export function useLocalTripStore(tripId: string) {
   const [data, setData] = useState<TripPhase1Data>(() =>
     createSeedTripData(tripId)
@@ -64,7 +83,7 @@ export function useLocalTripStore(tripId: string) {
     setIsLoaded(false);
     void loadTripData(tripId).then((next) => {
       if (!isCancelled) {
-        setData(next);
+        setData(withActiveTripMember(next));
         setIsLoaded(true);
       }
     });
@@ -79,14 +98,14 @@ export function useLocalTripStore(tripId: string) {
       const detail = (event as CustomEvent<LocalTripDataChangeDetail>).detail;
 
       if (detail?.tripId === tripId) {
-        setData(detail.data);
+        setData(withActiveTripMember(detail.data));
         setIsLoaded(true);
       }
     }
 
     function handleStorageChange() {
       void loadTripData(tripId).then((next) => {
-        setData(next);
+        setData(withActiveTripMember(next));
         setIsLoaded(true);
       });
     }
@@ -115,7 +134,11 @@ export function useLocalTripStore(tripId: string) {
   const actions = useMemo(
     () => ({
       setCurrentMember(memberId: string) {
+        setActiveTripMemberId(tripId, memberId);
         commit((current) => ({ ...current, currentMemberId: memberId }));
+      },
+      updateTripSettings(input: TripSettingsInput) {
+        commit((current) => updateTripSettingsInTrip(current, input));
       },
       addPlace(input: PlaceInput) {
         commit((current) => addPlaceToTrip(current, input));

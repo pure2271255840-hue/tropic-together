@@ -1,21 +1,19 @@
 # Tropic Together 项目快照
 
-最后更新：2026-07-25。
+最后更新：2026-07-26。
 
 ## 当前阶段
 
-Phase 1 本地优先 MVP。
+Phase 1 上线测试前的 Supabase MVP。
 
-Phase 0.5 地图 POC 已结束并退役。本仓库当前不再以内嵌地图为核心方向。
+产品方向：
 
-新的产品方向：
-
-- 列表优先。
-- 地点和行程分阶段协作。
-- 外部地图 URL 导航。
-- AI 只做行程草稿助手。
-- 最终版由发起人确认。
-- 第一版不接 Google Maps API 或 Apple MapKit JS。
+- 私密朋友旅行协作工具。
+- 登录后才能进入系统。
+- 行程、地点、活动都必须支持用户手动增删改查。
+- AI 只作为行程草稿助手，不直接确认最终版。
+- 地图优先使用外部地图 URL，不依赖 Google Places API 或 Apple MapKit JS。
+- 本地 dev server 由用户手动运行；需要本地环境测试时只告诉用户命令。
 
 ## 当前仓库
 
@@ -25,92 +23,167 @@ Phase 0.5 地图 POC 已结束并退役。本仓库当前不再以内嵌地图�
 D:\Projects\tropic-together-boyfriend
 ```
 
+分支：
+
+```text
+phase1-supabase-mvp
+```
+
+远程：
+
+```text
+https://github.com/pure2271255840-hue/tropic-together.git
+```
+
 技术栈：
 
-- Next.js
+- Next.js App Router
 - React
 - TypeScript
 - Tailwind CSS
-- localStorage adapter
+- Supabase REST API
+- localStorage fallback
 
-当前还没有：
+## 已实现
 
-- Supabase migrations
-- Supabase Auth
-- RLS
-- 远程 Supabase dev 项目
-- AI provider 接入
-- 前端 preview 部署
+### 前端导航
 
-## 本轮已完成
+- 底部/侧边导航：首页、行程、地点、我的。
+- 未登录时全局拦截，只显示登录/注册入口。
+- 测试账号提示：`noah / 123456`。
+- 测试账号快捷键仍保留：`Alt+Shift+M`，只用于本地测试切换成员。
+- 复制邀请链接成功后，按钮会短暂显示“已复制链接”。
 
-清理：
+### 账号与邀请
 
-- 删除退役地图 POC 页面。
-- 删除退役地图 POC 组件。
-- 删除退役地图 POC provider 代码。
-- 删除退役地图 POC 文档。
-- 删除旧 dashboard/mock 数据模块。
-- 删除本地 `.bundle` 产物。
-- `.env.example` 移除地图 POC key 占位。
-- `.gitignore` 增加 `*.bundle`。
+- 普通用户名密码登录，不使用邮箱绑定。
+- 登录 session 使用 httpOnly cookie。
+- 用户表：`public.app_users`。
+- session 表：`public.app_sessions`。
+- 测试账号 Noah 固定写入数据库，密码 `123456`。
+- 邀请码真实可用，入口为 `/join/[inviteCode]`。
+- 加入行程前必须登录。
+- 加入时昵称可选，不填默认用户名。
+- 同一行程内昵称必须唯一。
 
-新增：
+### 行程
 
-- `docs/PHASE_1_ONE_WEEK_PLAN.md`
-- `docs/PHASE_1_WORKFLOW_SPEC.md`
-- `docs/PROJECT_SNAPSHOT.md`
-- `features/trip/` 本地数据层
-- `/trip/[tripId]` 本地首页
-- `/trip/[tripId]/places` 地点页
-- `/trip/[tripId]/itinerary` 行程页
+- 行程页区分：
+  - 我管理的行程
+  - 我加入的行程
+- 我管理的行程可以删除。
+- 我加入的行程只显示进入和复制邀请，不显示删除。
+- 新建行程会把当前登录账号写成 owner。
+- 新建行程不再默认塞 Noah/Mia/Yuki/Leo 测试成员。
+- 行程卡片显示具体成员，不显示、不记录草稿数量。
+- 首页不再放“发起行程”，发起入口在行程页。
+- 发起行程和行程设置都支持填写非必填酒店地址或地图链接。
+- 行程设置支持修改行程名称、开始日期、结束日期。
 
-验证：
+### 行程详情与活动
+
+- 术语统一：行程 -> 天 -> 活动。
+- 某一天标题右侧有三个点菜单。
+- 三个点菜单包含：
+  - 添加活动
+  - 管理本日活动
+  - 删除当天
+- 点击“管理本日活动”后，每条活动才显示编辑/删除。
+- “管理行程”只管理某天或某几天，不管理单条活动。
+- 活动表单使用“时间段”，不暴露难懂字段结构。
+- 添加活动时不再让用户选择活动日期。
+- 总路线规则已接入：
+  - 有酒店：以酒店为起点。
+  - 无酒店：以第一个活动地点为起点。
+  - 单地点无酒店：只查看地点或外部地图链接，不强行生成路线。
+
+### 地点
+
+- 地点支持新增、编辑、删除、投票、排名。
+- 地点池分类简化为：
+  - 待投票
+  - 排名
+- 添加活动选择地点时，已被其他活动使用的地点默认不显示；编辑当前活动时保留当前地点。
+- 地点表单已简化：
+  - 用户只需填写地点名。
+  - 类型改为可选标签按钮，例如经典、餐饮、咖啡、自然、购物、交通。
+  - “一定要去 / 还不错”是小标签按钮。
+  - 地址或地图链接合并为一个输入。
+  - 经纬度保留为内部字段。
+
+### Supabase
+
+当前采用 Phase 1 JSON workspace 存储：
+
+- `public.trip_phase1_workspaces`
+- 每个行程一行。
+- `data jsonb` 保存当前前端数据结构。
+- 前端 CRUD 先稳定，后续再拆 normalized schema。
+
+已创建 migration：
+
+```text
+supabase/migrations/20260726000000_trip_phase1_workspaces.sql
+supabase/migrations/20260726010000_grant_trip_phase1_workspace_access.sql
+supabase/migrations/20260726020000_username_password_auth.sql
+supabase/migrations/20260726030000_seed_noah_test_account.sql
+```
+
+环境变量：
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` 只放服务端 `.env.local`，不要提交 GitHub，不要加 `NEXT_PUBLIC_`。
+
+## 当前未实现
+
+- DeepSeek / AI API 尚未接入。
+- Google Maps 短链接解析尚未实现。
+- 生产级 RLS 尚未完成。
+- 前端尚未部署到线上托管。
+
+## 下一步顺序
+
+1. 接 DeepSeek AI API：
+   - 只接现有按钮“生成 AI 草稿”和“AI 整理行程”。
+   - API key 放服务端，例如 `DEEPSEEK_API_KEY`。
+   - AI 输出结构化 JSON。
+   - AI 结果写成可编辑草稿，不自动确认最终版。
+2. 通过本地连接 Supabase 回归测试：
+   - 我的/登录/邀请加入。
+   - 行程设置、酒店地图链接、地点表单、总路线。
+3. 做生产级 RLS。
+4. 前端部署到线上托管。
+5. 需要时再做 Google Maps 短链接解析。
+
+## 常用命令
+
+用户手动启动或重启 dev server：
+
+```powershell
+cd D:\Projects\tropic-together-boyfriend
+
+Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
+
+npm.cmd run dev -- -p 3000
+```
+
+Codex 可运行的静态检查：
+
+```powershell
+npm.cmd run typecheck
+npm.cmd run lint
+```
+
+## 最新验证
 
 ```text
 npm.cmd run typecheck 通过
 npm.cmd run lint      通过
-npm.cmd run build     通过
 ```
-
-说明：`.next` 已作为可再生成缓存清理。用户后续自行运行本地 dev server。
-
-## 当前实现限制
-
-当前前端提供了技术底座和产品思路，但交互还没有完全符合新的共同工作流。
-
-主要差距：
-
-- 现在的地点模型还是 candidate / confirmed，不是“一定要去 / 还不错 + 点赞 / 倒拇指 + 原因 + 排名”。
-- 现在还没有旅行计划阶段状态。
-- 首页还没有完整的“你现在该做什么”行动卡片。
-- 行程还没有版本模型。
-- 行程还没有整版投票。
-- AI 入口还没有实现。
-- 底部导航当前需要在下一轮调整为：首页 / 行程 / 地点。
-
-## 后续工作流依据
-
-后续所有 Phase 1 产品和代码实现以此文档为准：
-
-```text
-docs/PHASE_1_WORKFLOW_SPEC.md
-```
-
-一周节奏参考：
-
-```text
-docs/PHASE_1_ONE_WEEK_PLAN.md
-```
-
-## 下一轮任务
-
-下一轮开始执行时，优先做本地前端重构：
-
-1. 更新数据模型：计划阶段、地点标签、地点投票原因、行程版本、行程投票。
-2. 更新 seed data。
-3. 重构首页行动卡片。
-4. 重构地点页为待投票、排名和分区视图。
-5. 重构行程页为版本和整版投票视图。
-6. 保持地图 URL 外部导航。
-7. 完成本地体验后再接 Supabase local。

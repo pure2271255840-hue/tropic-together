@@ -32,6 +32,7 @@ export type Coordinate = {
 
 export type TripMember = {
   id: string;
+  appUserId?: string;
   displayName: string;
   role: TripRole;
   color: "teal" | "coral" | "sunset" | "leaf";
@@ -47,8 +48,10 @@ export type TripOverview = {
   timezone: string;
   destinations: string[];
   phase: PlanPhase;
+  inviteCode?: string;
   inviteUrl: string;
   hotelAddress?: string;
+  hotelMapUrl?: string;
 };
 
 export type TravelPlace = {
@@ -59,6 +62,7 @@ export type TravelPlace = {
   category: string;
   initialTag: PlaceInitialTag;
   address: string;
+  mapUrl?: string;
   notes: string;
   suggestedDuration: string;
   coordinate?: Coordinate;
@@ -138,6 +142,7 @@ export type TripGroupSummary = {
   startDate: string;
   endDate: string;
   phase: PlanPhase;
+  inviteCode?: string;
   inviteUrl: string;
   members: TripMember[];
   placeCount: number;
@@ -150,10 +155,19 @@ export type PlaceInput = {
   category: string;
   initialTag: PlaceInitialTag;
   address: string;
+  mapUrl?: string;
   notes: string;
   suggestedDuration: string;
   lat?: number;
   lng?: number;
+};
+
+export type TripSettingsInput = {
+  name?: string;
+  startDate?: string;
+  endDate?: string;
+  hotelAddress?: string;
+  hotelMapUrl?: string;
 };
 
 export type ItineraryItemInput = {
