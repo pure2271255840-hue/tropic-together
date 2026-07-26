@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { DesktopTripNav } from "./desktop-trip-nav";
 import { MobileBottomNav } from "./mobile-bottom-nav";
+import { TestAccountShortcut } from "@/components/trip/phase1/test-account-shortcut";
 
 type AppShellProps = {
   children: ReactNode;
@@ -18,6 +19,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </div>
       <MobileBottomNav />
+      <TestAccountShortcut />
     </div>
   );
 }

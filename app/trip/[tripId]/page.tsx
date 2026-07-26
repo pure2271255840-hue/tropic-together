@@ -1,15 +1,13 @@
-import { DashboardPage } from "@/components/trip/dashboard/dashboard-page";
-import { getDashboardData } from "@/features/dashboard/mock-data";
+import { TripHomePage } from "@/components/trip/home/trip-home-page";
 
 export const dynamic = "force-dynamic";
 
-export default async function TripDashboardRoute({
+export default async function TripHomeRoute({
   params
 }: {
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  const dashboard = await getDashboardData(tripId);
 
-  return <DashboardPage data={dashboard} />;
+  return <TripHomePage tripId={tripId} />;
 }

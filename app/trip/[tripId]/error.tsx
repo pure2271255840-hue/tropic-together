@@ -4,7 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-export default function TripDashboardError({
+export default function TripHomeError({
   reset
 }: {
   error: Error & { digest?: string };
@@ -18,9 +18,9 @@ export default function TripDashboardError({
             <AlertTriangle className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold">行程看板暂时没有加载成功</h1>
+            <h1 className="text-2xl font-semibold">旅行页面暂时没有加载成功</h1>
             <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-              可能是本地开发服务刚刚刷新，或者 mock 数据读取中断。请重新加载一次。
+              本地开发服务可能刚刷新过。重新加载一次通常就能恢复。
             </p>
           </div>
           <Button onClick={reset}>重新加载</Button>

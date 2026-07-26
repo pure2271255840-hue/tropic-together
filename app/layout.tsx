@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 
 export const metadata: Metadata = {
   title: "Tropic Together",
-  description: "槟城与哥打京那巴鲁旅行协作看板"
+  description: "槟城与哥打京那巴鲁旅行协作工具"
 };
 
 export default function RootLayout({
