@@ -88,6 +88,7 @@ Apply the migration:
 
 ```text
 supabase/migrations/20260726000000_trip_phase1_workspaces.sql
+supabase/migrations/20260726010000_grant_trip_phase1_workspace_access.sql
 ```
 
 Then set:
