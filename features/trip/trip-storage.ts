@@ -104,7 +104,7 @@ export async function listTripGroups(defaultTripId: string) {
     return await listSupabaseTripGroups();
   } catch (error) {
     logSupabaseFallback(error);
-    return listLocalTripGroups(defaultTripId);
+    return [];
   }
 }
 

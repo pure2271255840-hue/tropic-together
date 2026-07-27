@@ -9,10 +9,15 @@ import {
   UsersRound
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useAuthSession } from "@/features/auth/use-auth-session";
 import {
   appleMapsDirectionsUrl,
   googleMapsDirectionsUrl
 } from "@/features/trip/navigation-links";
+import {
+  readCachedTripGroups,
+  writeCachedTripGroups
+} from "@/features/trip/trip-group-cache";
 import { listTripGroups, loadTripData } from "@/features/trip/trip-storage";
 import { formatDateLabel, planPhaseLabels } from "@/features/trip/trip-labels";
 import type {
@@ -35,31 +40,58 @@ type HomeItineraryItem = {
 };
 
 export function TripHomePage({ tripId }: TripHomePageProps) {
+  const auth = useAuthSession();
   const [confirmedTrip, setConfirmedTrip] = useState<TripPhase1Data | null>(null);
+  const [isLoadingTrips, setIsLoadingTrips] = useState(true);
 
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadConfirmedTrip() {
-      const groups = await listTripGroups(tripId);
-      const trips = await Promise.all(
-        groups.map((group) => loadTripData(group.id))
-      );
+    async function applyConfirmedTripGroups(
+      groups: Awaited<ReturnType<typeof listTripGroups>>
+    ) {
+      const trips = await Promise.all(groups.map((group) => loadTripData(group.id)));
       const confirmedTrips = trips
         .filter(isConfirmedTrip)
         .sort(compareTripsByNearestTime);
 
       if (!isCancelled) {
         setConfirmedTrip(confirmedTrips[0] ?? null);
+        setIsLoadingTrips(false);
       }
     }
 
-    void loadConfirmedTrip();
+    async function loadConfirmedTrip() {
+      if (!auth.user) {
+        setConfirmedTrip(null);
+        setIsLoadingTrips(false);
+        return;
+      }
+
+      const cachedGroups = readCachedTripGroups(auth.user.id);
+
+      if (cachedGroups) {
+        void applyConfirmedTripGroups(cachedGroups);
+      } else {
+        setIsLoadingTrips(true);
+      }
+
+      const groups = await listTripGroups(tripId);
+
+      writeCachedTripGroups(auth.user.id, groups);
+      await applyConfirmedTripGroups(groups);
+    }
+
+    if (auth.isLoading && !auth.user) {
+      setIsLoadingTrips(true);
+    } else {
+      void loadConfirmedTrip();
+    }
 
     return () => {
       isCancelled = true;
     };
-  }, [tripId]);
+  }, [auth.isLoading, auth.user, tripId]);
 
   const confirmedVersion = confirmedTrip
     ? getConfirmedVersion(confirmedTrip)
@@ -84,7 +116,11 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         </div>
       </section>
 
-      {confirmedTrip ? (
+      {isLoadingTrips ? (
+        <section className="surface-card text-sm text-muted-foreground">
+          正在读取行程
+        </section>
+      ) : confirmedTrip ? (
         <section className="corner-mark surface-card">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { useAuthSession } from "@/features/auth/use-auth-session";
 import {
   testAccountTripChangeEvent,
   type TestAccountTripChangeDetail
@@ -43,6 +44,10 @@ import type {
   TravelPlace,
   TripMember
 } from "@/features/trip/types";
+import {
+  readCachedTripGroups,
+  writeCachedTripGroups
+} from "@/features/trip/trip-group-cache";
 import { listTripGroups } from "@/features/trip/trip-storage";
 import { useLocalTripStore } from "@/features/trip/use-local-trip-store";
 import { cn } from "@/lib/utils";
@@ -124,7 +129,9 @@ function formToInput(form: PlaceFormState, fallbackCity: string): PlaceInput {
 }
 
 export function PlacesPage({ tripId }: PlacesPageProps) {
+  const auth = useAuthSession();
   const [tripGroups, setTripGroups] = useState<TripGroupSummary[]>([]);
+  const [isTripGroupsLoading, setIsTripGroupsLoading] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const workingTripId = selectedTripId ?? tripId;
   const { data, isLoaded, actions } = useLocalTripStore(workingTripId);
@@ -155,13 +162,50 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   const votingRanking =
     votingPlaceId ? rankings.find((ranking) => ranking.place.id === votingPlaceId) : undefined;
 
-  const refreshTripGroups = useCallback(async () => {
-    setTripGroups(await listTripGroups(tripId));
-  }, [tripId]);
+  const refreshTripGroups = useCallback(async (showLoading = false) => {
+    if (!auth.user) {
+      setTripGroups([]);
+      setIsTripGroupsLoading(false);
+      return;
+    }
+
+    if (showLoading) {
+      setIsTripGroupsLoading(true);
+    }
+
+    try {
+      const groups = await listTripGroups(tripId);
+
+      setTripGroups(groups);
+      writeCachedTripGroups(auth.user.id, groups);
+    } finally {
+      setIsTripGroupsLoading(false);
+    }
+  }, [auth.user, tripId]);
 
   useEffect(() => {
-    void refreshTripGroups();
-  }, [refreshTripGroups]);
+    if (auth.isLoading && !auth.user) {
+      setIsTripGroupsLoading(true);
+      return;
+    }
+
+    if (!auth.user) {
+      setTripGroups([]);
+      setIsTripGroupsLoading(false);
+      return;
+    }
+
+    const cachedGroups = readCachedTripGroups(auth.user.id);
+
+    if (cachedGroups) {
+      setTripGroups(cachedGroups);
+      setIsTripGroupsLoading(false);
+      void refreshTripGroups();
+      return;
+    }
+
+    void refreshTripGroups(true);
+  }, [auth.isLoading, auth.user, refreshTripGroups]);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -224,18 +268,25 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
         </section>
 
         <section className="grid gap-3">
-          {tripGroups.map((group) => (
-            <TripGroupPlaceCard
-              key={group.id}
-              group={group}
-              onOpen={() => setSelectedTripId(group.id)}
-            />
-          ))}
-          {tripGroups.length === 0 ? (
+          {isTripGroupsLoading ? (
+            <div className="surface-card text-sm text-muted-foreground">
+              正在读取行程
+            </div>
+          ) : null}
+          {!isTripGroupsLoading
+            ? tripGroups.map((group) => (
+                <TripGroupPlaceCard
+                  key={group.id}
+                  group={group}
+                  onOpen={() => setSelectedTripId(group.id)}
+                />
+              ))
+            : null}
+          {!isTripGroupsLoading && tripGroups.length === 0 ? (
             <div className="surface-card-muted text-center">
               <p className="text-base font-semibold">还没有行程数据</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                请先到行程页导入测试行程或发起新行程，再进入地点池。
+                请先到行程页发起新行程，再进入地点池。
               </p>
               <Link
                 className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.22)] transition hover:bg-primary/90"
@@ -245,6 +296,30 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
               </Link>
             </div>
           ) : null}
+        </section>
+      </main>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <main className="page-shell">
+        <section className="space-y-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSelectedTripId(null);
+              void refreshTripGroups();
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            返回行程
+          </Button>
+          <div className="surface-card text-sm text-muted-foreground">
+            正在读取行程
+          </div>
         </section>
       </main>
     );

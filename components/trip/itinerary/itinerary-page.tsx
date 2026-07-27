@@ -48,6 +48,10 @@ import {
   listTripGroups,
   saveTripData
 } from "@/features/trip/trip-storage";
+import {
+  readCachedTripGroups,
+  writeCachedTripGroups
+} from "@/features/trip/trip-group-cache";
 import { createSeedTripData } from "@/features/trip/seed-data";
 import { createInviteCode, invitePath } from "@/features/trip/invite-code";
 import {
@@ -132,6 +136,7 @@ function defaultItemForm(dayId: string): ItemFormState {
 export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const auth = useAuthSession();
   const [tripGroups, setTripGroups] = useState<TripGroupSummary[]>([]);
+  const [isTripGroupsLoading, setIsTripGroupsLoading] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -162,7 +167,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
     hotelLocation: ""
   });
   const workingTripId = selectedTripId ?? tripId;
-  const { data, actions } = useLocalTripStore(workingTripId);
+  const { data, isLoaded, actions } = useLocalTripStore(workingTripId);
   const currentMember =
     data.members.find((member) => member.id === data.currentMemberId) ??
     data.members[0];
@@ -220,13 +225,50 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
     [itemForm.placeId, placeRankings, usedPlaceIdsByOtherItems]
   );
 
-  const refreshTripGroups = useCallback(async () => {
-    setTripGroups(await listTripGroups(tripId));
-  }, [tripId]);
+  const refreshTripGroups = useCallback(async (showLoading = false) => {
+    if (!auth.user) {
+      setTripGroups([]);
+      setIsTripGroupsLoading(false);
+      return;
+    }
+
+    if (showLoading) {
+      setIsTripGroupsLoading(true);
+    }
+
+    try {
+      const groups = await listTripGroups(tripId);
+
+      setTripGroups(groups);
+      writeCachedTripGroups(auth.user.id, groups);
+    } finally {
+      setIsTripGroupsLoading(false);
+    }
+  }, [auth.user, tripId]);
 
   useEffect(() => {
-    void refreshTripGroups();
-  }, [refreshTripGroups]);
+    if (auth.isLoading && !auth.user) {
+      setIsTripGroupsLoading(true);
+      return;
+    }
+
+    if (!auth.user) {
+      setTripGroups([]);
+      setIsTripGroupsLoading(false);
+      return;
+    }
+
+    const cachedGroups = readCachedTripGroups(auth.user.id);
+
+    if (cachedGroups) {
+      setTripGroups(cachedGroups);
+      setIsTripGroupsLoading(false);
+      void refreshTripGroups();
+      return;
+    }
+
+    void refreshTripGroups(true);
+  }, [auth.isLoading, auth.user, refreshTripGroups]);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -339,7 +381,10 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
 
     await saveTripData(nextData);
     setActiveTripMemberId(slug, ownerMember.id);
-    setTripGroups(await listTripGroups(tripId));
+    const groups = await listTripGroups(tripId);
+
+    setTripGroups(groups);
+    writeCachedTripGroups(auth.user.id, groups);
     setSelectedTripId(slug);
     setShowNewTripModal(false);
   }
@@ -444,10 +489,13 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           tripGroups={tripGroups}
           currentUser={auth.user}
           isUserLoading={auth.isLoading && !auth.user}
+          isTripGroupsLoading={isTripGroupsLoading}
           onOpenTrip={openTripGroup}
           onCreateTrip={openNewTripModal}
           onDeleteTrip={deleteTripGroup}
         />
+      ) : !isLoaded ? (
+        <TripDetailLoading onBack={backToTripGroups} />
       ) : activeVersion ? (
         <ItineraryDetail
           version={activeVersion}
@@ -818,6 +866,7 @@ function TripGroupList({
   tripGroups,
   currentUser,
   isUserLoading,
+  isTripGroupsLoading,
   onOpenTrip,
   onCreateTrip,
   onDeleteTrip
@@ -825,6 +874,7 @@ function TripGroupList({
   tripGroups: TripGroupSummary[];
   currentUser: AuthUser | null;
   isUserLoading: boolean;
+  isTripGroupsLoading: boolean;
   onOpenTrip: (tripId: string) => void;
   onCreateTrip: () => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
@@ -854,9 +904,9 @@ function TripGroupList({
         </Button>
       </section>
 
-      {isUserLoading ? (
+      {isUserLoading || isTripGroupsLoading ? (
         <section className="surface-card text-sm text-muted-foreground">
-          正在读取账号
+          {isUserLoading ? "正在读取账号" : "正在读取行程"}
         </section>
       ) : (
         <>
@@ -879,7 +929,7 @@ function TripGroupList({
         </>
       )}
 
-      {!isUserLoading && !hasVisibleTrips ? (
+      {!isUserLoading && !isTripGroupsLoading && !hasVisibleTrips ? (
         <section className="grid gap-3">
           <div className="surface-card-muted text-center">
             <p className="text-base font-semibold">还没有行程数据</p>
@@ -896,6 +946,20 @@ function TripGroupList({
         </section>
       ) : null}
     </>
+  );
+}
+
+function TripDetailLoading({ onBack }: { onBack: () => void }) {
+  return (
+    <section className="grid gap-3">
+      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        返回行程
+      </Button>
+      <div className="surface-card text-sm text-muted-foreground">
+        正在读取行程
+      </div>
+    </section>
   );
 }
 
