@@ -170,6 +170,27 @@ export type TripSettingsInput = {
   hotelMapUrl?: string;
 };
 
+export type AiItineraryItemDraft = {
+  title: string;
+  placeName?: string;
+  startTime?: string;
+  endTime?: string;
+  notes?: string;
+};
+
+export type AiItineraryDayDraft = {
+  date: string;
+  title: string;
+  city?: string;
+  summary?: string;
+  items: AiItineraryItemDraft[];
+};
+
+export type AiItineraryDraft = {
+  label?: string;
+  days: AiItineraryDayDraft[];
+};
+
 export type ItineraryItemInput = {
   versionId: string;
   dayId: string;

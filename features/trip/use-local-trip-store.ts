@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  addAiItineraryDraftToTrip,
   addItineraryDayToTrip,
   addItineraryItemToTrip,
   addPlaceToTrip,
@@ -26,6 +27,7 @@ import {
 import { createSeedTripData } from "./seed-data";
 import { loadTripData, resetTripData, saveTripData } from "./trip-storage";
 import type {
+  AiItineraryDraft,
   ItineraryDayInput,
   ItineraryItemInput,
   ItineraryVoteValue,
@@ -76,6 +78,7 @@ export function useLocalTripStore(tripId: string) {
     createSeedTripData(tripId)
   );
   const [isLoaded, setIsLoaded] = useState(false);
+  const pendingCommitRef = useRef<TripPhase1Data | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -125,11 +128,23 @@ export function useLocalTripStore(tripId: string) {
   const commit = useCallback((producer: TripProducer) => {
     setData((current) => {
       const next = producer(current);
-      void saveTripData(next);
-      notifyLocalTripDataChanged(next);
+
+      pendingCommitRef.current = next;
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    const pendingCommit = pendingCommitRef.current;
+
+    if (!pendingCommit || pendingCommit !== data) {
+      return;
+    }
+
+    pendingCommitRef.current = null;
+    void saveTripData(pendingCommit);
+    notifyLocalTripDataChanged(pendingCommit);
+  }, [data]);
 
   const actions = useMemo(
     () => ({
@@ -164,6 +179,9 @@ export function useLocalTripStore(tripId: string) {
       },
       addItineraryDay(input: ItineraryDayInput) {
         commit((current) => addItineraryDayToTrip(current, input));
+      },
+      addAiItineraryDraft(input: AiItineraryDraft) {
+        commit((current) => addAiItineraryDraftToTrip(current, input));
       },
       updateItineraryDay(input: ItineraryDayInput & { dayId: string }) {
         commit((current) => updateItineraryDayInTrip(current, input));

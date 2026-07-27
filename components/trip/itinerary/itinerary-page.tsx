@@ -32,6 +32,8 @@ import {
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import type { AuthUser } from "@/features/auth/types";
 import { setActiveTripMemberId } from "@/features/trip/active-member";
+import { requestAiItineraryDraft } from "@/features/trip/ai-client";
+import type { AiTripActionMode } from "@/features/trip/ai-types";
 import {
   appleMapsDirectionsUrl,
   externalMapUrl,
@@ -100,6 +102,12 @@ type TripSettingsForm = {
   hotelLocation: string;
 };
 
+type AiActionState = {
+  mode: AiTripActionMode;
+  status: "running" | "success" | "error";
+  message?: string;
+};
+
 function defaultItemForm(dayId: string): ItemFormState {
   return {
     dayId,
@@ -122,9 +130,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const [showManageItineraryModal, setShowManageItineraryModal] = useState(false);
   const [showNewTripModal, setShowNewTripModal] = useState(false);
   const [showTripSettingsModal, setShowTripSettingsModal] = useState(false);
-  const [aiModalMode, setAiModalMode] = useState<"generate" | "organize" | null>(
-    null
-  );
+  const [aiActionState, setAiActionState] = useState<AiActionState | null>(null);
   const [voteIntent, setVoteIntent] = useState<ItineraryVoteValue | null>(null);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
   const [newTripForm, setNewTripForm] = useState<NewTripForm>({
@@ -387,6 +393,40 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
     setShowAddItemModal(false);
   }
 
+  async function runAiAction(mode: AiTripActionMode) {
+    const versionId =
+      mode === "organize" ? activeVersion?.id : data.currentItineraryVersionId;
+
+    setAiActionState({ mode, status: "running" });
+
+    try {
+      const result = await requestAiItineraryDraft({
+        mode,
+        data,
+        versionId
+      });
+
+      actions.addAiItineraryDraft(result.draft);
+      setAiActionState({
+        mode,
+        status: "success",
+        message:
+          mode === "organize"
+            ? "AI 已整理成新的可编辑草稿。"
+            : "AI 已生成新的可编辑草稿。"
+      });
+    } catch (error) {
+      setAiActionState({
+        mode,
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "AI 草稿生成失败，请稍后再试。"
+      });
+    }
+  }
+
   return (
     <main className="mx-auto w-full max-w-3xl space-y-4">
       {!selectedTripId ? (
@@ -417,7 +457,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
             setShowVoteModal(true);
           }}
           onAddItem={openAddItem}
-          onOrganizeWithAi={() => setAiModalMode("organize")}
+          onOrganizeWithAi={() => void runAiAction("organize")}
           onOpenSettings={openTripSettingsModal}
           onConfirmFinal={() => actions.confirmItineraryVersion(activeVersion.id)}
           onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
@@ -439,7 +479,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           isOwner={isOwner}
           onBack={backToTripGroups}
           onOpenSettings={openTripSettingsModal}
-          onGenerateAi={() => setAiModalMode("generate")}
+          onGenerateAi={() => void runAiAction("generate")}
         />
       )}
 
@@ -694,10 +734,8 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       </Modal>
 
       <AiActionModal
-        mode={aiModalMode}
-        title={data.trip.name}
-        hasPlaces={data.places.length > 0}
-        onClose={() => setAiModalMode(null)}
+        state={aiActionState}
+        onClose={() => setAiActionState(null)}
       />
     </main>
   );
@@ -1757,36 +1795,48 @@ function ManageDayActivitiesModal({
 }
 
 function AiActionModal({
-  mode,
-  title,
-  hasPlaces,
+  state,
   onClose
 }: {
-  mode: "generate" | "organize" | null;
-  title: string;
-  hasPlaces: boolean;
+  state: AiActionState | null;
   onClose: () => void;
 }) {
+  const mode = state?.mode ?? null;
+  const isRunning = state?.status === "running";
+  const isSuccess = state?.status === "success";
+  const isError = state?.status === "error";
+
   return (
     <Modal
       open={Boolean(mode)}
       title={mode === "organize" ? "AI 整理行程" : "生成 AI 草稿"}
-      description={title}
-      onClose={onClose}
+      description={
+        isRunning
+          ? "正在请求 AI，请稍等。"
+          : isSuccess
+            ? "草稿已添加到当前行程。"
+            : "没有写入草稿，请检查提示后再试。"
+      }
+      onClose={isRunning ? () => undefined : onClose}
     >
       <div className="space-y-3 text-sm leading-6 text-muted-foreground">
-        <p>
-          {hasPlaces
-            ? "接入后，AI 会根据行程标题、日期时间、地点池、想去/不想去投票和理由整理行程。"
-            : "要先添加地点，AI 才能根据地点和投票情况生成草稿。"}
-        </p>
-        <p>
-          {mode === "organize"
-            ? "整理结果会作为新的草稿内容，由发起人确认后再给成员投票。"
-            : "生成结果会先作为草稿，最终版仍由发起人确认。"}
-        </p>
-        <Button type="button" className="w-full" onClick={onClose}>
-          知道了
+        {isRunning ? (
+          <p>AI 会根据行程标题、日期、酒店、地点池、投票理由和当前草稿生成新的可编辑版本。</p>
+        ) : null}
+        {state?.message ? (
+          <p
+            className={cn(
+              "rounded-lg border px-3 py-2",
+              isError
+                ? "border-sunset/30 bg-sunset/10 text-sunset"
+                : "border-teal/30 bg-teal/10 text-teal"
+            )}
+          >
+            {state.message}
+          </p>
+        ) : null}
+        <Button type="button" className="w-full" disabled={isRunning} onClick={onClose}>
+          {isRunning ? "生成中" : isSuccess ? "查看草稿" : "知道了"}
         </Button>
       </div>
     </Modal>

@@ -1,6 +1,6 @@
 # Tropic Together 项目快照
 
-最后更新：2026-07-26。
+最后更新：2026-07-27。
 
 ## 当前阶段
 
@@ -53,6 +53,7 @@ https://github.com/pure2271255840-hue/tropic-together.git
 - 测试账号提示：`noah / 123456`。
 - 测试账号快捷键仍保留：`Alt+Shift+M`，只用于本地测试切换成员。
 - 复制邀请链接成功后，按钮会短暂显示“已复制链接”。
+- `useLocalTripStore` 的保存和广播已移到 render 后执行，避免导航组件在行程页 render 期间被同步更新。
 
 ### 账号与邀请
 
@@ -135,27 +136,53 @@ supabase/migrations/20260726030000_seed_noah_test_account.sql
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_MAX_TOKENS=8000
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` 只放服务端 `.env.local`，不要提交 GitHub，不要加 `NEXT_PUBLIC_`。
+`DEEPSEEK_API_KEY` 也只放服务端 `.env.local`，不要提交 GitHub，不要加 `NEXT_PUBLIC_`。
+
+### DeepSeek AI
+
+- 已接入服务端 API 路由：`/api/trips/ai`。
+- 现有按钮已接入：
+  - `生成 AI 草稿`
+  - `AI 整理行程`
+- API key 只从服务端环境变量 `DEEPSEEK_API_KEY` 读取。
+- `DEEPSEEK_API_KEY` 只填裸 key；如果误填 `Bearer ...`，服务端会自动去掉前缀。
+- 默认模型为 `deepseek-v4-flash`，可用 `DEEPSEEK_MODEL` 覆盖。
+- 默认 `DEEPSEEK_MAX_TOKENS=8000`，AI JSON 输出时禁用 thinking，降低返回空内容/非结构化内容的概率。
+- 若 DeepSeek 上游参数不兼容或返回空/非结构化 JSON，服务端会自动重试：
+  - JSON mode + disabled thinking
+  - JSON mode + 不传 thinking
+  - 普通文本模式并抽取 JSON
+- 前端不会收到 provider key，只调用本项目 API。
+- AI 输出要求结构化 JSON，结果写成新的可编辑草稿版本，不自动确认最终版。
+- AI 请求会最小化发送行程数据：行程基础信息、酒店、地点池、投票理由和当前草稿，不发送账号 id、cookie 或 provider key。
+- 用户已配置 DeepSeek API key 并完成本地按钮测试；当前反馈为“没问题了”。
+
+## 当前提交状态
+
+- 远端分支：`origin/phase1-supabase-mvp`。
+- 已推送提交：`61f540a feat: add phase1 auth invites and trip settings`。
+- DeepSeek AI 接入和相关修复仍在本地工作区，尚未 commit/push。
 
 ## 当前未实现
 
-- DeepSeek / AI API 尚未接入。
 - Google Maps 短链接解析尚未实现。
 - 生产级 RLS 尚未完成。
 - 前端尚未部署到线上托管。
 
 ## 下一步顺序
 
-1. 接 DeepSeek AI API：
-   - 只接现有按钮“生成 AI 草稿”和“AI 整理行程”。
-   - API key 放服务端，例如 `DEEPSEEK_API_KEY`。
-   - AI 输出结构化 JSON。
-   - AI 结果写成可编辑草稿，不自动确认最终版。
-2. 通过本地连接 Supabase 回归测试：
+1. 提交并推送 DeepSeek AI 接入和相关修复。
+2. 做完整回归测试：
    - 我的/登录/邀请加入。
    - 行程设置、酒店地图链接、地点表单、总路线。
+   - 生成 AI 草稿。
+   - AI 整理行程。
 3. 做生产级 RLS。
 4. 前端部署到线上托管。
 5. 需要时再做 Google Maps 短链接解析。
@@ -186,4 +213,5 @@ npm.cmd run lint
 ```text
 npm.cmd run typecheck 通过
 npm.cmd run lint      通过
+DeepSeek AI 本地按钮测试通过（用户确认）
 ```

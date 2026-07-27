@@ -2,6 +2,7 @@
 
 import { createSeedTripData } from "./seed-data";
 import type {
+  AiItineraryDraft,
   ItineraryDayInput,
   ItineraryItemInput,
   ItineraryVote,
@@ -43,6 +44,10 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
+}
+
+function normalizeLookupText(value: string) {
+  return value.trim().toLowerCase();
 }
 
 export function summarizeTripGroup(data: TripPhase1Data): TripGroupSummary {
@@ -694,6 +699,71 @@ export function cancelFinalItineraryVersionInTrip(
     return version;
   });
   next.trip.phase = hasOtherFinalVersion ? "final_confirmed" : "itinerary_voting";
+  next.updatedAt = timestamp;
+
+  return next;
+}
+
+export function addAiItineraryDraftToTrip(
+  data: TripPhase1Data,
+  draft: AiItineraryDraft
+) {
+  const next = cloneData(data);
+  const timestamp = nowIso();
+  const versionNumber =
+    Math.max(0, ...next.itineraryVersions.map((version) => version.versionNumber)) +
+    1;
+  const versionId = makeId("itinerary-ai");
+  const placeByName = new Map(
+    next.places.flatMap((place) => {
+      const names = [place.name, place.name.split(/\s+/)[0]]
+        .map(normalizeLookupText)
+        .filter(Boolean);
+
+      return names.map((name) => [name, place] as const);
+    })
+  );
+
+  next.currentItineraryVersionId = versionId;
+  next.trip.phase = "itinerary_voting";
+  next.itineraryVersions.push({
+    id: versionId,
+    tripId: next.trip.id,
+    versionNumber,
+    label: draft.label?.trim() || `AI 草稿 v${versionNumber}`,
+    status: "draft",
+    source: "ai",
+    createdByMemberId: next.currentMemberId,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    days: draft.days.map((day) => {
+      const dayId = makeId("day-ai");
+
+      return {
+        id: dayId,
+        versionId,
+        date: day.date,
+        title: day.title.trim() || day.date,
+        city: day.city?.trim() || "",
+        summary: day.summary?.trim() || "",
+        items: day.items.map((item) => {
+          const placeName = normalizeLookupText(item.placeName ?? "");
+          const place = placeName ? placeByName.get(placeName) : undefined;
+
+          return {
+            id: makeId("item-ai"),
+            dayId,
+            title: item.title.trim(),
+            placeId: place?.id,
+            startTime: item.startTime?.trim() || "",
+            endTime: item.endTime?.trim() || "",
+            notes: item.notes?.trim() || "",
+            isLocked: false
+          };
+        })
+      };
+    })
+  });
   next.updatedAt = timestamp;
 
   return next;

@@ -99,9 +99,13 @@ Then set:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_MAX_TOKENS=8000
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is only for Next.js API routes. Keep it server-side and do not prefix it with `NEXT_PUBLIC_`.
+`DEEPSEEK_API_KEY` is also server-side only. Keep it in `.env.local`, never in `NEXT_PUBLIC_*`.
 
 The current trip workspace migration still uses temporary permissive RLS policies for the prototype. Tighten these policies before production so only real trip members can access a trip.
 
@@ -126,7 +130,6 @@ Supabase will manage database, Auth, Storage, and optional Edge Functions. Next.
 - Google Maps API keys or Apple MapKit JS
 - Production Supabase project changes
 - Production-grade Auth and RLS hardening
-- AI provider integration
 - File uploads, expenses, reminders, and push notifications
 
 ## Files To Treat Carefully
