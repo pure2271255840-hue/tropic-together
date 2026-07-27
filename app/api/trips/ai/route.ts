@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authErrorResponse, getAuthenticatedUser } from "@/features/auth/server";
+import { isTripPhase1Data } from "@/features/trip/data-shape";
 import type {
   AiItineraryDayDraft,
   AiItineraryDraft,
@@ -161,17 +162,6 @@ function buildPromptPayload(
     })),
     currentVersion: versionPayload(currentVersion, body.data.places)
   };
-}
-
-function isTripPhase1Data(value: unknown): value is TripPhase1Data {
-  const candidate = value as TripPhase1Data | undefined;
-
-  return Boolean(
-    candidate?.trip?.id &&
-      candidate.trip.name &&
-      Array.isArray(candidate.places) &&
-      Array.isArray(candidate.itineraryVersions)
-  );
 }
 
 function parseRequestBody(value: unknown): AiTripDraftRequest | null {

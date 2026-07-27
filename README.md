@@ -78,9 +78,9 @@ The current local UI is a technical base, not the final Phase 1 interaction mode
 
 Without Supabase environment variables, Phase 1 data is stored in browser localStorage under a `tropic-together:phase1:*` key.
 
-With Supabase configured, the app stores one row per trip in `public.trip_phase1_workspaces`, using `jsonb` for the current Phase 1 data shape. Username/password test accounts are stored in `public.app_users` and sessions are stored in `public.app_sessions`.
+With Supabase configured, the app stores one row per trip in `public.trip_phase1_workspaces`, using `jsonb` for the current Phase 1 data shape. Username/password app accounts are stored in `public.app_users` and sessions are stored in `public.app_sessions`.
 
-Supabase mode does not automatically recreate seed data after everything is deleted. To start an online test with realistic data, open the itinerary page and click `导入测试行程`. That imported trip is real Supabase data and can be edited or deleted.
+Supabase mode does not automatically recreate seed data after everything is deleted. Public users should create real trips through the `发起新行程` flow and join through invite codes.
 
 ## Supabase Setup
 
@@ -91,6 +91,7 @@ supabase/migrations/20260726000000_trip_phase1_workspaces.sql
 supabase/migrations/20260726010000_grant_trip_phase1_workspace_access.sql
 supabase/migrations/20260726020000_username_password_auth.sql
 supabase/migrations/20260726030000_seed_noah_test_account.sql
+supabase/migrations/20260727000000_harden_trip_workspace_access_realtime.sql
 ```
 
 Then set:
@@ -99,15 +100,17 @@ Then set:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_JWT_SECRET=
 DEEPSEEK_API_KEY=
 DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_MAX_TOKENS=8000
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is only for Next.js API routes. Keep it server-side and do not prefix it with `NEXT_PUBLIC_`.
+`SUPABASE_JWT_SECRET` is server-side only and is used to mint short-lived Realtime tokens for logged-in trip members.
 `DEEPSEEK_API_KEY` is also server-side only. Keep it in `.env.local`, never in `NEXT_PUBLIC_*`.
 
-The current trip workspace migration still uses temporary permissive RLS policies for the prototype. Tighten these policies before production so only real trip members can access a trip.
+Trip workspace reads are protected by RLS for Realtime subscriptions. Browser writes go through Next.js API routes backed by `SUPABASE_SERVICE_ROLE_KEY`, where the app checks the signed-in user against `data.members[].appUserId`.
 
 The online test seed account is `noah` with password `123456`.
 
@@ -128,8 +131,8 @@ Supabase will manage database, Auth, Storage, and optional Edge Functions. Next.
 
 - Embedded map SDKs
 - Google Maps API keys or Apple MapKit JS
-- Production Supabase project changes
-- Production-grade Auth and RLS hardening
+- Production Supabase project operations beyond the included migrations
+- Production-grade security auditing beyond the Phase 1 member-scoped RLS/API checks
 - File uploads, expenses, reminders, and push notifications
 
 ## Files To Treat Carefully

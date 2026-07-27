@@ -27,6 +27,10 @@ import {
 import { createSeedTripData } from "./seed-data";
 import { localTripDataChangeEvent } from "./trip-events";
 import {
+  isTripRealtimeConfigured,
+  subscribeToTripWorkspace
+} from "./trip-realtime";
+import {
   isRemoteTripStorageEnabled,
   loadRemoteTripData,
   loadTripData,
@@ -92,6 +96,25 @@ export function useLocalTripStore(tripId: string) {
   useEffect(() => {
     latestDataRef.current = data;
   }, [data]);
+
+  const applyRemoteTripData = useCallback((remoteData: TripPhase1Data) => {
+    if (pendingCommitRef.current) {
+      return;
+    }
+
+    const currentData = latestDataRef.current;
+
+    if (remoteData.updatedAt <= currentData.updatedAt) {
+      return;
+    }
+
+    const nextData = withActiveTripMember(remoteData);
+
+    latestDataRef.current = nextData;
+    setData(nextData);
+    setIsLoaded(true);
+    notifyLocalTripDataChanged(nextData);
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -161,22 +184,11 @@ export function useLocalTripStore(tripId: string) {
 
       const remoteData = await loadRemoteTripData(tripId);
 
-      if (!remoteData || isCancelled || pendingCommitRef.current) {
+      if (!remoteData || isCancelled) {
         return;
       }
 
-      const currentData = latestDataRef.current;
-
-      if (remoteData.updatedAt <= currentData.updatedAt) {
-        return;
-      }
-
-      const nextData = withActiveTripMember(remoteData);
-
-      latestDataRef.current = nextData;
-      setData(nextData);
-      setIsLoaded(true);
-      notifyLocalTripDataChanged(nextData);
+      applyRemoteTripData(remoteData);
     }
 
     function syncVisibleRemoteTripData() {
@@ -199,7 +211,19 @@ export function useLocalTripStore(tripId: string) {
       window.removeEventListener("focus", syncVisibleRemoteTripData);
       document.removeEventListener("visibilitychange", syncVisibleRemoteTripData);
     };
-  }, [isLoaded, tripId]);
+  }, [applyRemoteTripData, isLoaded, tripId]);
+
+  useEffect(() => {
+    if (
+      !isLoaded ||
+      !isRemoteTripStorageEnabled() ||
+      !isTripRealtimeConfigured()
+    ) {
+      return undefined;
+    }
+
+    return subscribeToTripWorkspace(tripId, applyRemoteTripData);
+  }, [applyRemoteTripData, isLoaded, tripId]);
 
   const commit = useCallback((producer: TripProducer) => {
     setData((current) => {

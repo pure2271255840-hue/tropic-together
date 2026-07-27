@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  cloneData,
+  compactTripItineraryHistory,
+  summarizeTripGroup
+} from "./data-shape";
 import { createSeedTripData } from "./seed-data";
 import type {
   AiItineraryDraft,
@@ -32,33 +37,6 @@ function canUseLocalStorage() {
   return typeof window !== "undefined" && Boolean(window.localStorage);
 }
 
-function cloneData(data: TripPhase1Data): TripPhase1Data {
-  return JSON.parse(JSON.stringify(data)) as TripPhase1Data;
-}
-
-export function compactTripItineraryHistory(data: TripPhase1Data): TripPhase1Data {
-  const next = cloneData(data);
-  const currentVersion =
-    next.itineraryVersions.find(
-      (version) => version.id === next.currentItineraryVersionId
-    ) ?? next.itineraryVersions[0];
-
-  if (!currentVersion) {
-    next.currentItineraryVersionId = "";
-    next.itineraryVersions = [];
-    next.itineraryVotes = [];
-    return next;
-  }
-
-  next.currentItineraryVersionId = currentVersion.id;
-  next.itineraryVersions = [currentVersion];
-  next.itineraryVotes = next.itineraryVotes.filter(
-    (vote) => vote.versionId === currentVersion.id
-  );
-
-  return next;
-}
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -71,24 +49,6 @@ function makeId(prefix: string) {
 
 function normalizeLookupText(value: string) {
   return value.trim().toLowerCase();
-}
-
-export function summarizeTripGroup(data: TripPhase1Data): TripGroupSummary {
-  const currentData = compactTripItineraryHistory(data);
-
-  return {
-    id: currentData.trip.id,
-    name: currentData.trip.name,
-    subtitle: currentData.trip.subtitle,
-    startDate: currentData.trip.startDate,
-    endDate: currentData.trip.endDate,
-    phase: currentData.trip.phase,
-    inviteCode: currentData.trip.inviteCode,
-    inviteUrl: currentData.trip.inviteUrl,
-    members: currentData.members,
-    placeCount: currentData.places.length,
-    updatedAt: currentData.updatedAt
-  };
 }
 
 function readStoredTripData(tripId: string): TripPhase1Data | null {

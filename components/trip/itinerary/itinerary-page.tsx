@@ -7,7 +7,6 @@ import {
   CalendarDays,
   CheckCircle2,
   Copy,
-  Database,
   ExternalLink,
   House,
   Loader2,
@@ -46,7 +45,6 @@ import {
 } from "@/features/trip/navigation-links";
 import {
   deleteTripData,
-  importSeedTripData,
   listTripGroups,
   saveTripData
 } from "@/features/trip/trip-storage";
@@ -286,13 +284,6 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
     void refreshTripGroups();
   }
 
-  async function importSeedTrip() {
-    const seeded = await importSeedTripData(tripId);
-
-    setTripGroups(await listTripGroups(tripId));
-    setSelectedTripId(seeded.trip.id);
-  }
-
   function updateNewTrip<K extends keyof NewTripForm>(
     key: K,
     value: NewTripForm[K]
@@ -455,7 +446,6 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           isUserLoading={auth.isLoading && !auth.user}
           onOpenTrip={openTripGroup}
           onCreateTrip={openNewTripModal}
-          onImportSeedTrip={importSeedTrip}
           onDeleteTrip={deleteTripGroup}
         />
       ) : activeVersion ? (
@@ -830,7 +820,6 @@ function TripGroupList({
   isUserLoading,
   onOpenTrip,
   onCreateTrip,
-  onImportSeedTrip,
   onDeleteTrip
 }: {
   tripGroups: TripGroupSummary[];
@@ -838,7 +827,6 @@ function TripGroupList({
   isUserLoading: boolean;
   onOpenTrip: (tripId: string) => void;
   onCreateTrip: () => void;
-  onImportSeedTrip: () => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
 }) {
   const managedGroups = useMemo(
@@ -896,13 +884,9 @@ function TripGroupList({
           <div className="surface-card-muted text-center">
             <p className="text-base font-semibold">还没有行程数据</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              上线测试可以先导入当前测试行程；导入后它会成为 Supabase 里的真实数据，可编辑也可删除。
+              先发起一个新行程，邀请同行成员加入后一起收集地点和确认行程。
             </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <Button type="button" onClick={onImportSeedTrip}>
-                <Database className="h-4 w-4" aria-hidden="true" />
-                导入测试行程
-              </Button>
+            <div className="mt-4 flex justify-center">
               <Button type="button" variant="outline" onClick={onCreateTrip}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 发起新行程

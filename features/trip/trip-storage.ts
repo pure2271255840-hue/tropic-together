@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  compactTripItineraryHistory,
   deleteLocalTripGroup,
   listLocalTripGroups,
   loadLocalTripData,
   resetLocalTripData,
   saveLocalTripData
 } from "./local-storage-adapter";
+import { compactTripItineraryHistory } from "./data-shape";
 import { createSeedTripData } from "./seed-data";
 import {
   deleteSupabaseTripData,
@@ -39,6 +39,30 @@ function hasItineraryHistory(data: TripPhase1Data) {
     data.itineraryVersions.length > 1 ||
     data.itineraryVotes.some((vote) => vote.versionId !== currentVersionId)
   );
+}
+
+function createUnavailableTripData(tripId: string): TripPhase1Data {
+  const data = compactTripItineraryHistory(createSeedTripData(tripId));
+
+  return {
+    ...data,
+    trip: {
+      ...data.trip,
+      name: "行程不可访问",
+      subtitle: "你还不是这个行程的成员，或这个行程不存在。",
+      phase: "setup",
+      inviteCode: undefined,
+      inviteUrl: ""
+    },
+    members: [],
+    currentMemberId: "",
+    places: [],
+    placeVotes: [],
+    itineraryVersions: [],
+    currentItineraryVersionId: "",
+    itineraryVotes: [],
+    updatedAt: new Date().toISOString()
+  };
 }
 
 export function isRemoteTripStorageEnabled() {
@@ -97,10 +121,10 @@ export async function loadTripData(tripId: string) {
     }
 
     deleteLocalTripGroup(tripId);
-    return compactTripItineraryHistory(createSeedTripData(tripId));
+    return createUnavailableTripData(tripId);
   } catch (error) {
     logSupabaseFallback(error);
-    return loadLocalTripData(tripId);
+    return createUnavailableTripData(tripId);
   }
 }
 

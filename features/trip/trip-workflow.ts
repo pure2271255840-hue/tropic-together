@@ -1,4 +1,5 @@
 import type { AuthUser } from "@/features/auth/types";
+import { tripMemberBelongsToUser } from "./access";
 import type {
   ItineraryVersion,
   TripGroupSummary,
@@ -7,14 +8,7 @@ import type {
 } from "./types";
 
 export function memberBelongsToUser(member: TripMember, user: AuthUser | null) {
-  if (!user) {
-    return false;
-  }
-
-  return (
-    member.appUserId === user.id ||
-    member.displayName.trim().toLowerCase() === user.username
-  );
+  return tripMemberBelongsToUser(member, user);
 }
 
 export function isManagedItineraryVotingTrip(

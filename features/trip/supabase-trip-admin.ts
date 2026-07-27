@@ -41,3 +41,12 @@ export async function loadSupabaseTripWorkspaceForAdmin(tripId: string) {
 
   return rows[0] ?? null;
 }
+
+export async function deleteSupabaseTripWorkspaceForAdmin(tripId: string) {
+  await supabaseAdminRequest<undefined>(
+    "trip_phase1_workspaces",
+    `?id=eq.${encodeFilterValue(tripId)}`,
+    { method: "DELETE" },
+    "return=minimal"
+  );
+}
