@@ -12,7 +12,7 @@ type AuthGateProps = {
 export function AuthGate({ children }: AuthGateProps) {
   const auth = useAuthSession();
 
-  if (auth.isLoading) {
+  if (auth.isLoading && !auth.user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="rounded-[1.25rem] border border-border bg-white px-5 py-4 text-sm text-muted-foreground shadow-soft">

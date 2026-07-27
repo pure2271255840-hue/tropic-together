@@ -26,7 +26,13 @@ import {
 } from "./active-member";
 import { createSeedTripData } from "./seed-data";
 import { localTripDataChangeEvent } from "./trip-events";
-import { loadTripData, resetTripData, saveTripData } from "./trip-storage";
+import {
+  isRemoteTripStorageEnabled,
+  loadRemoteTripData,
+  loadTripData,
+  resetTripData,
+  saveTripData
+} from "./trip-storage";
 import type {
   AiItineraryDraft,
   ItineraryDayInput,
@@ -44,6 +50,8 @@ type LocalTripDataChangeDetail = {
   tripId: string;
   data: TripPhase1Data;
 };
+
+const remoteSyncIntervalMs = 10000;
 
 function notifyLocalTripDataChanged(data: TripPhase1Data) {
   if (typeof window === "undefined") {
@@ -79,6 +87,11 @@ export function useLocalTripStore(tripId: string) {
   );
   const [isLoaded, setIsLoaded] = useState(false);
   const pendingCommitRef = useRef<TripPhase1Data | null>(null);
+  const latestDataRef = useRef(data);
+
+  useEffect(() => {
+    latestDataRef.current = data;
+  }, [data]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -86,7 +99,10 @@ export function useLocalTripStore(tripId: string) {
     setIsLoaded(false);
     void loadTripData(tripId).then((next) => {
       if (!isCancelled) {
-        setData(withActiveTripMember(next));
+        const nextData = withActiveTripMember(next);
+
+        latestDataRef.current = nextData;
+        setData(nextData);
         setIsLoaded(true);
       }
     });
@@ -101,14 +117,20 @@ export function useLocalTripStore(tripId: string) {
       const detail = (event as CustomEvent<LocalTripDataChangeDetail>).detail;
 
       if (detail?.tripId === tripId) {
-        setData(withActiveTripMember(detail.data));
+        const nextData = withActiveTripMember(detail.data);
+
+        latestDataRef.current = nextData;
+        setData(nextData);
         setIsLoaded(true);
       }
     }
 
     function handleStorageChange() {
       void loadTripData(tripId).then((next) => {
-        setData(withActiveTripMember(next));
+        const nextData = withActiveTripMember(next);
+
+        latestDataRef.current = nextData;
+        setData(nextData);
         setIsLoaded(true);
       });
     }
@@ -125,11 +147,66 @@ export function useLocalTripStore(tripId: string) {
     };
   }, [tripId]);
 
+  useEffect(() => {
+    if (!isLoaded || !isRemoteTripStorageEnabled()) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+
+    async function syncRemoteTripData() {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      const remoteData = await loadRemoteTripData(tripId);
+
+      if (!remoteData || isCancelled || pendingCommitRef.current) {
+        return;
+      }
+
+      const currentData = latestDataRef.current;
+
+      if (remoteData.updatedAt <= currentData.updatedAt) {
+        return;
+      }
+
+      const nextData = withActiveTripMember(remoteData);
+
+      latestDataRef.current = nextData;
+      setData(nextData);
+      setIsLoaded(true);
+      notifyLocalTripDataChanged(nextData);
+    }
+
+    function syncVisibleRemoteTripData() {
+      if (document.visibilityState !== "hidden") {
+        void syncRemoteTripData();
+      }
+    }
+
+    const intervalId = window.setInterval(
+      () => void syncRemoteTripData(),
+      remoteSyncIntervalMs
+    );
+
+    window.addEventListener("focus", syncVisibleRemoteTripData);
+    document.addEventListener("visibilitychange", syncVisibleRemoteTripData);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", syncVisibleRemoteTripData);
+      document.removeEventListener("visibilitychange", syncVisibleRemoteTripData);
+    };
+  }, [isLoaded, tripId]);
+
   const commit = useCallback((producer: TripProducer) => {
     setData((current) => {
       const next = producer(current);
 
       pendingCommitRef.current = next;
+      latestDataRef.current = next;
       return next;
     });
   }, []);
@@ -246,6 +323,7 @@ export function useLocalTripStore(tripId: string) {
         const next = resetTripData(tripId);
 
         notifyLocalTripDataChanged(next);
+        latestDataRef.current = next;
         setData(next);
       }
     }),

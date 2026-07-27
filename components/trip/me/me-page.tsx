@@ -56,7 +56,7 @@ export function MePage({ tripId }: MePageProps) {
         <h1 className="page-title">我的</h1>
       </section>
 
-      {auth.isLoading ? (
+      {auth.isLoading && !auth.user ? (
         <section className="surface-card text-sm text-muted-foreground">
           正在读取账号
         </section>

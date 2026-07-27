@@ -45,6 +45,32 @@ export function isRemoteTripStorageEnabled() {
   return isSupabaseTripStorageConfigured();
 }
 
+export async function loadRemoteTripData(tripId: string) {
+  if (!isSupabaseTripStorageConfigured()) {
+    return null;
+  }
+
+  try {
+    const remoteData = await loadSupabaseTripData(tripId);
+
+    if (!remoteData) {
+      return null;
+    }
+
+    const compactedData = compactTripItineraryHistory(remoteData);
+
+    saveLocalTripData(compactedData);
+    if (hasItineraryHistory(remoteData)) {
+      void saveSupabaseTripData(compactedData).catch(logSupabaseFallback);
+    }
+
+    return compactedData;
+  } catch (error) {
+    logSupabaseFallback(error);
+    return null;
+  }
+}
+
 export async function listTripGroups(defaultTripId: string) {
   if (!isSupabaseTripStorageConfigured()) {
     return listLocalTripGroups(defaultTripId);
@@ -64,17 +90,10 @@ export async function loadTripData(tripId: string) {
   }
 
   try {
-    const remoteData = await loadSupabaseTripData(tripId);
+    const remoteData = await loadRemoteTripData(tripId);
 
     if (remoteData) {
-      const compactedData = compactTripItineraryHistory(remoteData);
-
-      saveLocalTripData(compactedData);
-      if (hasItineraryHistory(remoteData)) {
-        void saveSupabaseTripData(compactedData).catch(logSupabaseFallback);
-      }
-
-      return compactedData;
+      return remoteData;
     }
 
     deleteLocalTripGroup(tripId);

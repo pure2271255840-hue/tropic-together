@@ -63,7 +63,7 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
         </div>
       </section>
 
-      {auth.isLoading ? (
+      {auth.isLoading && !auth.user ? (
         <section className="surface-card text-sm text-muted-foreground">
           正在读取账号
         </section>

@@ -452,7 +452,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
         <TripGroupList
           tripGroups={tripGroups}
           currentUser={auth.user}
-          isUserLoading={auth.isLoading}
+          isUserLoading={auth.isLoading && !auth.user}
           onOpenTrip={openTripGroup}
           onCreateTrip={openNewTripModal}
           onImportSeedTrip={importSeedTrip}

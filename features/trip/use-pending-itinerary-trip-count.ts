@@ -3,12 +3,18 @@
 import { useEffect, useState } from "react";
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import { localTripDataChangeEvent } from "./trip-events";
-import { listTripGroups, loadTripData } from "./trip-storage";
+import {
+  isRemoteTripStorageEnabled,
+  listTripGroups,
+  loadTripData
+} from "./trip-storage";
 import {
   isJoinedItineraryVoteNeeded,
   isJoinedTripForUser,
   isManagedItineraryVotingTrip
 } from "./trip-workflow";
+
+const remoteBadgeSyncIntervalMs = 15000;
 
 export function usePendingItineraryTripCount(defaultTripId: string) {
   const { user, isLoading } = useAuthSession();
@@ -26,6 +32,32 @@ export function usePendingItineraryTripCount(defaultTripId: string) {
     return () => {
       window.removeEventListener(localTripDataChangeEvent, refresh);
       window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isRemoteTripStorageEnabled()) {
+      return undefined;
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState !== "hidden") {
+        setRefreshToken((current) => current + 1);
+      }
+    }
+
+    const intervalId = window.setInterval(
+      refreshWhenVisible,
+      remoteBadgeSyncIntervalMs
+    );
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);
 

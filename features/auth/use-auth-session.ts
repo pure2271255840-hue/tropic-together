@@ -1,11 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
 import type { AuthResponse, AuthUser } from "./types";
 
 type AuthPayload = AuthResponse & {
   message?: string;
 };
+
+type AuthSessionContextValue = {
+  user: AuthUser | null;
+  isLoading: boolean;
+  isSubmitting: boolean;
+  error: string;
+  login: (username: string, password: string) => Promise<AuthUser | null>;
+  register: (username: string, password: string) => Promise<AuthUser | null>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+};
+
+const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
 async function parseAuthResponse(response: Response) {
   const payload = (await response.json().catch(() => ({}))) as AuthPayload;
@@ -17,7 +39,7 @@ async function parseAuthResponse(response: Response) {
   return payload;
 }
 
-export function useAuthSession() {
+function useAuthSessionState(): AuthSessionContextValue {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,14 +124,33 @@ export function useAuthSession() {
     }
   }, []);
 
-  return {
-    user,
-    isLoading,
-    isSubmitting,
-    error,
-    login,
-    register,
-    logout,
-    refresh
-  };
+  return useMemo(
+    () => ({
+      user,
+      isLoading,
+      isSubmitting,
+      error,
+      login,
+      register,
+      logout,
+      refresh
+    }),
+    [error, isLoading, isSubmitting, login, logout, refresh, register, user]
+  );
+}
+
+export function AuthSessionProvider({ children }: { children: ReactNode }) {
+  const session = useAuthSessionState();
+
+  return createElement(AuthSessionContext.Provider, { value: session }, children);
+}
+
+export function useAuthSession() {
+  const session = useContext(AuthSessionContext);
+
+  if (!session) {
+    throw new Error("useAuthSession must be used within AuthSessionProvider.");
+  }
+
+  return session;
 }
