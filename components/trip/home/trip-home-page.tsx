@@ -170,6 +170,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         </section>
       )}
 
+      {!isLoadingTrips ? (
       <section className="corner-mark rounded-[1.25rem] border border-primary/15 bg-secondary/70 p-5 text-foreground shadow-soft">
         <div className="flex gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-white text-primary">
@@ -203,6 +204,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
           </div>
         ) : null}
       </section>
+      ) : null}
 
     </main>
   );

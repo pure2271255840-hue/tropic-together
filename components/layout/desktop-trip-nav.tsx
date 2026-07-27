@@ -87,13 +87,6 @@ export function DesktopTripNav() {
             );
           })}
         </nav>
-
-        <div className="corner-mark mt-auto rounded-[1.25rem] border border-primary/10 bg-secondary/60 p-4 text-sm leading-6 text-secondary-foreground">
-          <p className="font-medium text-foreground">Phase 1 数据模式</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            配置 Supabase 后远端同步；未配置时继续使用本地数据。
-          </p>
-        </div>
       </div>
     </aside>
   );
