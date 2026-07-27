@@ -9,6 +9,7 @@ import {
   UsersRound
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import {
   appleMapsDirectionsUrl,
@@ -117,9 +118,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
       </section>
 
       {isLoadingTrips ? (
-        <section className="surface-card text-sm text-muted-foreground">
-          正在读取行程
-        </section>
+        <HomeLoadingState />
       ) : confirmedTrip ? (
         <section className="corner-mark surface-card">
           <div className="flex items-start justify-between gap-3">
@@ -207,6 +206,25 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
       ) : null}
 
     </main>
+  );
+}
+
+function HomeLoadingState() {
+  return (
+    <section className="surface-card" aria-hidden="true">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-3">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-7 w-56 max-w-full" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <Skeleton className="h-7 w-16 shrink-0 rounded-full" />
+      </div>
+      <div className="mt-5 flex gap-2">
+        <Skeleton className="h-10 w-28" />
+        <Skeleton className="h-10 w-20" />
+      </div>
+    </section>
   );
 }
 
