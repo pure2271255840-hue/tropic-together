@@ -19,13 +19,13 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "rounded-lg border border-dashed border-border bg-white/75 p-5",
+        "rounded-[1.25rem] border border-dashed border-border bg-white/80 p-5 shadow-soft",
         className
       )}
     >
       <div className="flex items-start gap-3">
         {icon ? (
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-teal/15 bg-accent text-accent-foreground">
             {icon}
           </span>
         ) : null}

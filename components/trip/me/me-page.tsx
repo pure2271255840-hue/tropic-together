@@ -50,19 +50,19 @@ export function MePage({ tripId }: MePageProps) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-4">
+    <main className="page-shell">
       <section>
-        <p className="text-sm font-medium text-muted-foreground">账号</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-normal">我的</h1>
+        <p className="page-kicker">账号</p>
+        <h1 className="page-title">我的</h1>
       </section>
 
       {auth.isLoading ? (
-        <section className="rounded-lg border border-border bg-white p-4 text-sm text-muted-foreground shadow-soft">
+        <section className="surface-card text-sm text-muted-foreground">
           正在读取账号
         </section>
       ) : auth.user ? (
         <>
-          <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+          <section className="corner-mark surface-card">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -85,14 +85,14 @@ export function MePage({ tripId }: MePageProps) {
             </div>
           </section>
 
-          <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+          <section className="surface-card">
             <div className="flex items-center gap-2">
               <Ticket className="h-4 w-4 text-teal" aria-hidden="true" />
               <h2 className="text-base font-semibold">加入行程</h2>
             </div>
             <form className="mt-4 grid gap-3" onSubmit={submitJoin}>
               <input
-                className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm uppercase"
+                className="field-control uppercase"
                 placeholder="邀请码"
                 value={inviteCode}
                 onChange={(event) =>
@@ -100,13 +100,13 @@ export function MePage({ tripId }: MePageProps) {
                 }
               />
               <input
-                className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+                className="field-control"
                 placeholder="行程昵称，可选"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
               />
               {joinError ? (
-                <p className="rounded-lg border border-coral/25 bg-coral/10 px-3 py-2 text-sm leading-6 text-coral">
+                <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
                   {joinError}
                 </p>
               ) : null}

@@ -15,7 +15,7 @@ export function AuthGate({ children }: AuthGateProps) {
   if (auth.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <div className="rounded-lg border border-border bg-white px-4 py-3 text-sm text-muted-foreground shadow-soft">
+        <div className="rounded-[1.25rem] border border-border bg-white px-5 py-4 text-sm text-muted-foreground shadow-soft">
           正在读取账号
         </div>
       </div>
@@ -24,11 +24,11 @@ export function AuthGate({ children }: AuthGateProps) {
 
   if (!auth.user) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
-        <div className="w-full max-w-md space-y-4">
-          <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+      <main className="eastern-corner flex min-h-screen items-center justify-center bg-background px-5 py-8">
+        <div className="w-full max-w-md space-y-5">
+          <section className="corner-mark rounded-[1.25rem] border border-border bg-white p-5 shadow-soft">
             <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <span className="flex h-11 w-11 items-center justify-center rounded-[1.125rem] bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(242,99,76,0.22)]">
                 <Plane className="h-5 w-5" aria-hidden="true" />
               </span>
               <div>
@@ -38,7 +38,7 @@ export function AuthGate({ children }: AuthGateProps) {
                 </p>
               </div>
             </div>
-            <p className="mt-4 rounded-lg bg-muted/60 px-3 py-2 text-sm leading-6 text-muted-foreground">
+            <p className="mt-4 rounded-lg border border-border bg-muted/55 px-3 py-2 text-sm leading-6 text-muted-foreground">
               测试账号：noah / 123456
             </p>
           </section>

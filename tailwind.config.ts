@@ -40,12 +40,15 @@ const config: Config = {
         leaf: "hsl(var(--leaf) / <alpha-value>)"
       },
       borderRadius: {
-        lg: "0.5rem",
-        md: "0.375rem",
-        sm: "0.25rem"
+        lg: "1rem",
+        md: "0.75rem",
+        sm: "0.5rem"
       },
       boxShadow: {
-        soft: "0 14px 40px rgba(22, 47, 54, 0.08)"
+        soft:
+          "0 18px 48px rgba(23, 23, 23, 0.055), 0 1px 2px rgba(23, 23, 23, 0.04)",
+        lift:
+          "0 24px 64px rgba(23, 23, 23, 0.08), 0 1px 2px rgba(23, 23, 23, 0.05)"
       }
     }
   },

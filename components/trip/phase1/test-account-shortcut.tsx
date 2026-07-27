@@ -102,7 +102,7 @@ export function TestAccountShortcut() {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed right-4 top-4 z-50 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-foreground shadow-soft transition",
+        "pointer-events-none fixed right-4 top-4 z-50 flex items-center gap-2 rounded-[1rem] border border-border bg-white px-3 py-2 text-sm font-medium text-foreground shadow-lift transition",
         isVisible ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0"
       )}
       role="status"

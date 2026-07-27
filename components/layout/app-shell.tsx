@@ -11,11 +11,11 @@ type AppShellProps = {
 export function AppShell({ children }: AppShellProps) {
   return (
     <AuthGate>
-      <div className="min-h-screen">
+      <div className="eastern-corner min-h-screen bg-background">
         <div className="mx-auto flex w-full max-w-7xl">
           <DesktopTripNav />
           <div className="min-w-0 flex-1">
-            <main className="px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
+            <main className="px-5 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-12 lg:pt-10">
               {children}
             </main>
           </div>

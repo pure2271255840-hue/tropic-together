@@ -18,13 +18,13 @@ export function MemberSwitcher({
   const currentMember = members.find((member) => member.id === currentMemberId);
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-white px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-[1.25rem] border border-border bg-white px-4 py-3 shadow-soft">
       <div className="flex items-center gap-2 text-sm font-medium">
         <UsersRound className="h-4 w-4 text-teal" aria-hidden="true" />
         <span>当前成员</span>
       </div>
       <select
-        className="focus-ring h-10 rounded-lg border border-input bg-white px-3 text-sm"
+        className="field-control h-10"
         value={currentMemberId}
         onChange={(event) => onChange(event.target.value)}
       >

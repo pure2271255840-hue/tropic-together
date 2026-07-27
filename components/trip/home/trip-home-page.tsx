@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  CalendarDays,
   ExternalLink,
   Navigation,
   Route,
@@ -75,24 +74,24 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
       : undefined;
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-4">
+    <main className="page-shell">
       <section>
         <div>
-          <p className="text-sm font-medium text-muted-foreground">
+          <p className="page-kicker">
             今日行程
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-normal">首页</h1>
+          <h1 className="page-title">首页</h1>
         </div>
       </section>
 
       {confirmedTrip ? (
-        <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+        <section className="corner-mark surface-card">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-muted-foreground">
                 最近已确认行程
               </p>
-              <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-normal">
+              <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-normal text-foreground">
                 {confirmedTrip.trip.name}
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -106,7 +105,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
-              className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium transition hover:bg-muted/70"
+              className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
               href={`/trip/${confirmedTrip.trip.id}/itinerary`}
             >
               <Route className="h-4 w-4" aria-hidden="true" />
@@ -121,13 +120,13 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
           </div>
         </section>
       ) : (
-        <section className="rounded-lg border border-dashed border-border bg-white p-6 text-center shadow-soft">
+        <section className="surface-card-muted text-center">
           <p className="text-base font-semibold">还没有已确认的行程</p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             首页只展示已确认且时间最近的行程。去行程页确认最终版后，这里会显示它的下一段活动。
           </p>
           <Link
-            className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+            className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.22)] transition hover:bg-primary/90"
             href={`/trip/${tripId}/itinerary`}
           >
             去行程页
@@ -135,18 +134,18 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         </section>
       )}
 
-      <section className="rounded-lg border border-primary/20 bg-primary p-4 text-primary-foreground shadow-soft">
+      <section className="corner-mark rounded-[1.25rem] border border-primary/15 bg-secondary/70 p-5 text-foreground shadow-soft">
         <div className="flex gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/15">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-white text-primary">
             <Navigation className="h-5 w-5" aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-primary-foreground/75">下一个即将执行的行程</p>
+            <p className="text-sm text-muted-foreground">下一个即将执行的行程</p>
             <h2 className="mt-1 text-lg font-semibold">
               {nextPlan?.item.title ?? "暂无下一段行程"}
             </h2>
             {nextPlan ? (
-              <p className="mt-2 text-sm leading-6 text-primary-foreground/85">
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {formatDateLabel(nextPlan.dayDate)} {nextPlan.item.startTime || "--:--"} - {nextPlan.item.endTime || "--:--"}
                 {nextPlan.place ? ` / ${nextPlan.place.name}` : ""}
               </p>
@@ -169,23 +168,13 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         ) : null}
       </section>
 
-      {confirmedVersion ? (
-        <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <CalendarDays className="h-4 w-4" aria-hidden="true" />
-            已确认版本
-          </div>
-          <p className="mt-2 text-lg font-semibold">{confirmedVersion.label}</p>
-        </section>
-      ) : null}
-
     </main>
   );
 }
 
 function MemberPill({ member }: { member: TripMember }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 py-1 text-sm">
+    <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 py-1 text-sm shadow-[0_1px_2px_rgba(23,23,23,0.04)]">
       <UsersRound className="h-3.5 w-3.5 text-teal" aria-hidden="true" />
       <span>{member.displayName}</span>
       <span
@@ -215,8 +204,8 @@ function ExternalNavLink({
       className={cn(
         "focus-ring inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition",
         inverse
-          ? "border-white/35 bg-white text-primary hover:bg-white/90"
-          : "border-border bg-white text-foreground hover:bg-muted"
+          ? "border-primary/20 bg-white text-primary hover:bg-secondary"
+          : "border-border bg-white text-foreground hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
       )}
       href={href}
       rel="noreferrer"

@@ -9,6 +9,8 @@ import {
   Copy,
   Database,
   ExternalLink,
+  House,
+  Loader2,
   MapPin,
   MoreHorizontal,
   Pencil,
@@ -51,9 +53,12 @@ import {
 import { createSeedTripData } from "@/features/trip/seed-data";
 import { createInviteCode, invitePath } from "@/features/trip/invite-code";
 import {
+  isJoinedTripForUser,
+  isTripManagedByUser
+} from "@/features/trip/trip-workflow";
+import {
   buildPlaceRankings,
   formatDateLabel,
-  itinerarySourceLabels,
   itineraryVersionStatusLabels,
   itineraryVoteLabels,
   placeVoteLabels,
@@ -61,6 +66,7 @@ import {
   type RankedPlace
 } from "@/features/trip/trip-labels";
 import type {
+  AiItineraryDraft,
   ItineraryDay,
   ItineraryDayInput,
   ItineraryItem,
@@ -104,8 +110,13 @@ type TripSettingsForm = {
 
 type AiActionState = {
   mode: AiTripActionMode;
-  status: "running" | "success" | "error";
+  status: "running" | "error";
   message?: string;
+};
+
+type AiDraftPreviewState = {
+  mode: AiTripActionMode;
+  draft: AiItineraryDraft;
 };
 
 function defaultItemForm(dayId: string): ItemFormState {
@@ -127,10 +138,17 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [managedDayId, setManagedDayId] = useState<string | null>(null);
+  const [pendingDeleteDayId, setPendingDeleteDayId] = useState<string | null>(
+    null
+  );
+  const [pendingDeleteItem, setPendingDeleteItem] =
+    useState<ItineraryItem | null>(null);
   const [showManageItineraryModal, setShowManageItineraryModal] = useState(false);
   const [showNewTripModal, setShowNewTripModal] = useState(false);
   const [showTripSettingsModal, setShowTripSettingsModal] = useState(false);
   const [aiActionState, setAiActionState] = useState<AiActionState | null>(null);
+  const [aiDraftPreview, setAiDraftPreview] =
+    useState<AiDraftPreviewState | null>(null);
   const [voteIntent, setVoteIntent] = useState<ItineraryVoteValue | null>(null);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
   const [newTripForm, setNewTripForm] = useState<NewTripForm>({
@@ -172,6 +190,10 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const managedDay =
     activeVersion && managedDayId
       ? activeVersion.days.find((day) => day.id === managedDayId) ?? null
+      : null;
+  const pendingDeleteDay =
+    activeVersion && pendingDeleteDayId
+      ? activeVersion.days.find((day) => day.id === pendingDeleteDayId) ?? null
       : null;
   const usedPlaceIdsByOtherItems = useMemo<Record<string, boolean>>(() => {
     const usedPlaceIds: Record<string, boolean> = {};
@@ -394,6 +416,10 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   }
 
   async function runAiAction(mode: AiTripActionMode) {
+    if (aiActionState?.status === "running") {
+      return;
+    }
+
     const versionId =
       mode === "organize" ? activeVersion?.id : data.currentItineraryVersionId;
 
@@ -406,15 +432,8 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
         versionId
       });
 
-      actions.addAiItineraryDraft(result.draft);
-      setAiActionState({
-        mode,
-        status: "success",
-        message:
-          mode === "organize"
-            ? "AI 已整理成新的可编辑草稿。"
-            : "AI 已生成新的可编辑草稿。"
-      });
+      setAiDraftPreview({ mode, draft: result.draft });
+      setAiActionState(null);
     } catch (error) {
       setAiActionState({
         mode,
@@ -428,7 +447,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-4">
+    <main className="page-shell">
       {!selectedTripId ? (
         <TripGroupList
           tripGroups={tripGroups}
@@ -442,6 +461,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       ) : activeVersion ? (
         <ItineraryDetail
           version={activeVersion}
+          tripName={data.trip.name}
           hotelAddress={data.trip.hotelAddress}
           hotelMapUrl={data.trip.hotelMapUrl}
           placeById={placeById}
@@ -451,6 +471,16 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
             (vote) => vote.versionId === activeVersion.id
           )}
           isOwner={isOwner}
+          isOrganizingWithAi={
+            aiActionState?.mode === "organize" &&
+            aiActionState.status === "running"
+          }
+          aiError={
+            aiActionState?.mode === "organize" &&
+            aiActionState.status === "error"
+              ? aiActionState.message
+              : undefined
+          }
           onBack={backToTripGroups}
           onVote={(value) => {
             setVoteIntent(value);
@@ -463,20 +493,22 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
           onManageItinerary={() => setShowManageItineraryModal(true)}
           onManageDay={setManagedDayId}
-          onDeleteDay={(dayId) => {
-            const day = activeVersion.days.find((candidate) => candidate.id === dayId);
-
-            if (!day || !window.confirm(`删除 ${formatDateLabel(day.date)} 的整天安排？`)) {
-              return;
-            }
-
-            actions.deleteItineraryDays(activeVersion.id, [dayId]);
-          }}
+          onDeleteDay={setPendingDeleteDayId}
         />
       ) : (
         <TripGroupWorkspace
           data={data}
           isOwner={isOwner}
+          isGeneratingWithAi={
+            aiActionState?.mode === "generate" &&
+            aiActionState.status === "running"
+          }
+          aiError={
+            aiActionState?.mode === "generate" &&
+            aiActionState.status === "error"
+              ? aiActionState.message
+              : undefined
+          }
           onBack={backToTripGroups}
           onOpenSettings={openTripSettingsModal}
           onGenerateAi={() => void runAiAction("generate")}
@@ -517,16 +549,22 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
               open
               day={managedDay}
               placeById={placeById}
+              currentMember={currentMember}
+              isOwner={isOwner}
               onClose={() => setManagedDayId(null)}
               onEditActivity={(item) => {
+                if (!canManageItineraryItem(item, currentMember, isOwner)) {
+                  return;
+                }
+
                 setManagedDayId(null);
                 setEditingItem(item);
                 setItemForm(itemToForm(item));
                 setShowAddItemModal(true);
               }}
               onDeleteActivity={(item) => {
-                if (window.confirm(`删除活动「${item.title}」？`)) {
-                  actions.deleteItineraryItem(activeVersion.id, item.id);
+                if (canManageItineraryItem(item, currentMember, isOwner)) {
+                  setPendingDeleteItem(item);
                 }
               }}
             />
@@ -535,6 +573,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           <ManageItineraryModal
             open={showManageItineraryModal}
             version={activeVersion}
+            canManageExistingDays={isOwner}
             onClose={() => setShowManageItineraryModal(false)}
             onAddDay={(input) =>
               actions.addItineraryDay({ ...input, versionId: activeVersion.id })
@@ -551,6 +590,42 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
             }
           />
 
+          <DeleteDaysConfirmModal
+            open={Boolean(pendingDeleteDay)}
+            days={pendingDeleteDay ? [pendingDeleteDay] : []}
+            onClose={() => setPendingDeleteDayId(null)}
+            onConfirm={() => {
+              if (
+                !pendingDeleteDay ||
+                !canDeleteItineraryDay(pendingDeleteDay, currentMember, isOwner)
+              ) {
+                setPendingDeleteDayId(null);
+                return;
+              }
+
+              actions.deleteItineraryDays(activeVersion.id, [pendingDeleteDay.id]);
+              setPendingDeleteDayId(null);
+            }}
+          />
+
+          <DeleteItemConfirmModal
+            open={Boolean(pendingDeleteItem)}
+            item={pendingDeleteItem}
+            onClose={() => setPendingDeleteItem(null)}
+            onConfirm={() => {
+              if (
+                !pendingDeleteItem ||
+                !canManageItineraryItem(pendingDeleteItem, currentMember, isOwner)
+              ) {
+                setPendingDeleteItem(null);
+                return;
+              }
+
+              actions.deleteItineraryItem(activeVersion.id, pendingDeleteItem.id);
+              setPendingDeleteItem(null);
+            }}
+          />
+
           <Modal
             open={showAddItemModal}
             title={editingItem ? "编辑活动" : "添加活动"}
@@ -562,7 +637,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           >
             <form className="grid gap-3" onSubmit={submitItem}>
               <input
-                className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+                className="field-control"
                 placeholder="活动标题"
                 value={itemForm.title}
                 onChange={(event) => updateItemForm("title", event.target.value)}
@@ -577,7 +652,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
                   <legend className="text-sm font-medium">时间段</legend>
                   <div className="grid grid-cols-2 gap-3">
                     <input
-                      className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm font-normal"
+                      className="field-control font-normal"
                       aria-label="开始时间"
                       type="time"
                       value={itemForm.startTime}
@@ -586,7 +661,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
                       }
                     />
                     <input
-                      className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm font-normal"
+                      className="field-control font-normal"
                       aria-label="结束时间"
                       type="time"
                       value={itemForm.endTime}
@@ -598,12 +673,12 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
                 </fieldset>
               </div>
               <textarea
-                className="focus-ring min-h-20 rounded-lg border border-input bg-white px-3 py-2 text-sm"
+                className="field-area min-h-20"
                 placeholder="备注"
                 value={itemForm.notes}
                 onChange={(event) => updateItemForm("notes", event.target.value)}
               />
-              <label className="flex h-11 items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 text-sm">
+              <label className="flex h-11 items-center gap-2 rounded-lg border border-border bg-muted/55 px-3 text-sm">
                 <input
                   type="checkbox"
                   checked={itemForm.isLocked}
@@ -629,25 +704,25 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       >
         <form className="grid gap-3" onSubmit={createTripGroup}>
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="行程名称"
             value={newTripForm.name}
             onChange={(event) => updateNewTrip("name", event.target.value)}
           />
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             type="date"
             value={newTripForm.startDate}
             onChange={(event) => updateNewTrip("startDate", event.target.value)}
           />
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             type="date"
             value={newTripForm.endDate}
             onChange={(event) => updateNewTrip("endDate", event.target.value)}
           />
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="酒店地址或地图链接（可选）"
             value={newTripForm.hotelLocation}
             onChange={(event) =>
@@ -675,7 +750,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       >
         <form className="grid gap-3" onSubmit={submitTripSettings}>
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="行程名称"
             value={tripSettingsForm.name}
             onChange={(event) =>
@@ -687,7 +762,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           />
           <div className="grid grid-cols-2 gap-3">
             <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              className="field-control"
               type="date"
               value={tripSettingsForm.startDate}
               onChange={(event) =>
@@ -698,7 +773,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
               }
             />
             <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              className="field-control"
               type="date"
               value={tripSettingsForm.endDate}
               onChange={(event) =>
@@ -710,7 +785,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
             />
           </div>
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="酒店地址或地图链接（可选）"
             value={tripSettingsForm.hotelLocation}
             onChange={(event) =>
@@ -733,9 +808,17 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
         </form>
       </Modal>
 
-      <AiActionModal
-        state={aiActionState}
-        onClose={() => setAiActionState(null)}
+      <AiDraftPreviewModal
+        state={aiDraftPreview}
+        onClose={() => setAiDraftPreview(null)}
+        onConfirm={() => {
+          if (!aiDraftPreview) {
+            return;
+          }
+
+          actions.addAiItineraryDraft(aiDraftPreview.draft);
+          setAiDraftPreview(null);
+        }}
       />
     </main>
   );
@@ -758,11 +841,15 @@ function TripGroupList({
   onImportSeedTrip: () => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
 }) {
-  const managedGroups = tripGroups.filter((group) =>
-    isTripManagedByUser(group, currentUser)
+  const managedGroups = useMemo(
+    () =>
+      tripGroups.filter((group) => isTripManagedByUser(group, currentUser)),
+    [currentUser, tripGroups]
   );
-  const joinedGroups = tripGroups.filter((group) =>
-    isTripJoinedByUser(group, currentUser)
+  const joinedGroups = useMemo(
+    () =>
+      tripGroups.filter((group) => isJoinedTripForUser(group, currentUser)),
+    [currentUser, tripGroups]
   );
   const hasVisibleTrips = managedGroups.length > 0 || joinedGroups.length > 0;
 
@@ -770,8 +857,8 @@ function TripGroupList({
     <>
       <section className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">我的行程</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-normal">行程</h1>
+          <p className="page-kicker">我的行程</p>
+          <h1 className="page-title">行程</h1>
         </div>
         <Button type="button" onClick={onCreateTrip}>
           <Plus className="h-4 w-4" aria-hidden="true" />
@@ -780,7 +867,7 @@ function TripGroupList({
       </section>
 
       {isUserLoading ? (
-        <section className="rounded-lg border border-border bg-white p-4 text-sm text-muted-foreground shadow-soft">
+        <section className="surface-card text-sm text-muted-foreground">
           正在读取账号
         </section>
       ) : (
@@ -806,7 +893,7 @@ function TripGroupList({
 
       {!isUserLoading && !hasVisibleTrips ? (
         <section className="grid gap-3">
-          <div className="rounded-lg border border-dashed border-border bg-white p-6 text-center shadow-soft">
+          <div className="surface-card-muted text-center">
             <p className="text-base font-semibold">还没有行程数据</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               上线测试可以先导入当前测试行程；导入后它会成为 Supabase 里的真实数据，可编辑也可删除。
@@ -859,7 +946,7 @@ function TripGroupSection({
         />
       ))}
       {groups.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-white p-5 text-center text-sm text-muted-foreground shadow-soft">
+        <div className="surface-card-muted text-center text-sm text-muted-foreground">
           {emptyText}
         </div>
       ) : null}
@@ -905,31 +992,42 @@ function CopyInviteButton({ inviteUrl }: { inviteUrl: string }) {
 
 function HotelLocationLine({
   address,
-  mapUrl
+  mapUrl,
+  routePlan
 }: {
   address?: string;
   mapUrl?: string;
+  routePlan?: { href: string; label: string } | null;
 }) {
   const hotelStop = hotelStopForLocation(address, mapUrl);
 
-  if (!hotelStop) {
+  if (!hotelStop && !routePlan) {
     return null;
   }
 
   return (
-    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm leading-6 text-muted-foreground">
-      <MapPin className="h-4 w-4 shrink-0 text-teal" aria-hidden="true" />
-      <span>{address?.trim() || "酒店地图链接"}</span>
-      <a
-        className="focus-ring inline-flex items-center gap-1 rounded-md px-1 font-medium text-primary hover:underline"
-        href={externalMapUrl(hotelStop)}
-        rel="noreferrer"
-        target="_blank"
-      >
-        地图
-        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-      </a>
-    </p>
+    <div className="mt-1 space-y-1 text-sm leading-6 text-muted-foreground">
+      {hotelStop ? (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <House className="h-4 w-4 shrink-0 text-teal" aria-hidden="true" />
+          <span>{address?.trim() || "酒店地图链接"}</span>
+        </p>
+      ) : null}
+      {routePlan ? (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Route className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+          <a
+            className="focus-ring inline-flex items-center gap-1 rounded-md font-medium text-primary hover:bg-secondary"
+            href={routePlan.href}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {routePlan.label}
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -945,7 +1043,7 @@ function TripGroupCard({
   onDeleteTrip: (group: TripGroupSummary) => void;
 }) {
   return (
-    <article className="rounded-lg border border-border bg-white p-4 shadow-soft">
+    <article className="corner-mark surface-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold leading-snug">{group.name}</h2>
@@ -987,12 +1085,16 @@ function TripGroupCard({
 function TripGroupWorkspace({
   data,
   isOwner,
+  isGeneratingWithAi,
+  aiError,
   onBack,
   onOpenSettings,
   onGenerateAi
 }: {
   data: ReturnType<typeof useLocalTripStore>["data"];
   isOwner: boolean;
+  isGeneratingWithAi: boolean;
+  aiError?: string;
   onBack: () => void;
   onOpenSettings: () => void;
   onGenerateAi: () => void;
@@ -1005,13 +1107,13 @@ function TripGroupWorkspace({
           返回行程列表
         </Button>
 
-        <div className="rounded-lg border border-border bg-white p-4 shadow-soft">
+        <div className="corner-mark surface-card">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-muted-foreground">
+              <p className="page-kicker">
                 行程
               </p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-normal">
+              <h1 className="page-title">
                 {data.trip.name}
               </h1>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -1022,21 +1124,27 @@ function TripGroupWorkspace({
                 mapUrl={data.trip.hotelMapUrl}
               />
             </div>
-            <Badge tone="teal" className="shrink-0">
-              {planPhaseLabels[data.trip.phase]}
-            </Badge>
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge tone="teal">{planPhaseLabels[data.trip.phase]}</Badge>
+              {isOwner ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10"
+                  onClick={onOpenSettings}
+                  aria-label="行程设置"
+                >
+                  <Settings2 className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <CopyInviteButton inviteUrl={data.trip.inviteUrl} />
-            {isOwner ? (
-              <Button type="button" variant="outline" onClick={onOpenSettings}>
-                <Settings2 className="h-4 w-4" aria-hidden="true" />
-                行程设置
-              </Button>
-            ) : null}
             <Link
-              className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium transition hover:bg-muted/70"
+              className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
               href={`/trip/${data.trip.id}/places`}
             >
               <MapPin className="h-4 w-4" aria-hidden="true" />
@@ -1048,34 +1156,48 @@ function TripGroupWorkspace({
       </section>
 
       {data.places.length === 0 ? (
-        <section className="rounded-lg border border-dashed border-border bg-white p-6 text-center shadow-soft">
+        <section className="surface-card-muted text-center">
           <p className="text-base font-semibold">要先添加地点才能生成草稿</p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             AI 会根据行程标题、日期时间、地点池，以及大家的想去/不想去理由生成行程草稿。
           </p>
           <Link
-            className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+            className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.22)] transition hover:bg-primary/90"
             href={`/trip/${data.trip.id}/places`}
           >
             去添加地点
           </Link>
         </section>
       ) : (
-        <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+        <section className="surface-card">
           <p className="text-base font-semibold">可以生成第一版草稿</p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             已有 {data.places.length} 个地点。AI 会使用行程标题、日期时间、地点和投票理由整理出第一版草稿。
           </p>
           {isOwner ? (
-            <Button type="button" className="mt-4" onClick={onGenerateAi}>
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
-              生成 AI 草稿
+            <Button
+              type="button"
+              className="mt-4"
+              disabled={isGeneratingWithAi}
+              onClick={onGenerateAi}
+            >
+              {isGeneratingWithAi ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+              )}
+              {isGeneratingWithAi ? "生成中" : "生成 AI 草稿"}
             </Button>
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">
               等待发起人生成草稿。
             </p>
           )}
+          {aiError ? (
+            <p className="mt-3 rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
+              {aiError}
+            </p>
+          ) : null}
         </section>
       )}
     </>
@@ -1084,6 +1206,7 @@ function TripGroupWorkspace({
 
 function ItineraryDetail({
   version,
+  tripName,
   hotelAddress,
   hotelMapUrl,
   placeById,
@@ -1091,6 +1214,8 @@ function ItineraryDetail({
   members,
   votes,
   isOwner,
+  isOrganizingWithAi,
+  aiError,
   onBack,
   onVote,
   onAddItem,
@@ -1103,6 +1228,7 @@ function ItineraryDetail({
   onDeleteDay
 }: {
   version: ItineraryVersion;
+  tripName: string;
   hotelAddress?: string;
   hotelMapUrl?: string;
   placeById: Map<string, TravelPlace>;
@@ -1115,6 +1241,8 @@ function ItineraryDetail({
     reason: string;
   }>;
   isOwner: boolean;
+  isOrganizingWithAi: boolean;
+  aiError?: string;
   onBack: () => void;
   onVote: (value: ItineraryVoteValue) => void;
   onAddItem: (dayId?: string) => void;
@@ -1135,6 +1263,12 @@ function ItineraryDetail({
   const currentVote = votes.find((vote) => vote.memberId === currentMember.id);
   const upCount = votes.filter((vote) => vote.value === "up").length;
   const downCount = votes.filter((vote) => vote.value === "down").length;
+  const versionBadgeLabel =
+    version.status === "final"
+      ? itineraryVersionStatusLabels.final
+      : version.source === "ai"
+        ? "AI 草稿"
+        : itineraryVersionStatusLabels.draft;
 
   return (
     <>
@@ -1144,32 +1278,70 @@ function ItineraryDetail({
           返回行程
         </Button>
 
-        <div className="rounded-lg border border-border bg-white p-4 shadow-soft">
+        <div className="corner-mark surface-card">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-muted-foreground">
+              <p className="page-kicker">
                 {versionDateRange(version)}
               </p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-normal">
-                {version.label}
+              <h1 className="page-title">
+                {tripName}
               </h1>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {itinerarySourceLabels[version.source]} / 生成于 {formatDateTime(version.createdAt)}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge tone={version.status === "final" ? "teal" : "coral"}>
+                  {versionBadgeLabel}
+                </Badge>
+                {isOwner ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={version.status === "final" ? "secondary" : "outline"}
+                    className="rounded-full"
+                    onClick={
+                      version.status === "final" ? onCancelFinal : onConfirmFinal
+                    }
+                  >
+                    {version.status === "final" ? (
+                      <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {version.status === "final" ? "取消最终版" : "确认最终版"}
+                  </Button>
+                ) : null}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                生成于 {formatDateTime(version.createdAt)}
               </p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 活动是可编辑草稿，成员可以手动调整。
               </p>
-              <HotelLocationLine address={hotelAddress} mapUrl={hotelMapUrl} />
+              <HotelLocationLine
+                address={hotelAddress}
+                mapUrl={hotelMapUrl}
+                routePlan={routePlan}
+              />
             </div>
-            <Badge tone={version.status === "final" ? "teal" : "outline"} className="shrink-0">
-              {itineraryVersionStatusLabels[version.status]}
-            </Badge>
+            {isOwner ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 shrink-0"
+                onClick={onOpenSettings}
+                aria-label="行程设置"
+              >
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            ) : null}
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-4">
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
             <Button
               type="button"
+              size="sm"
               variant={currentVote?.value === "up" ? "quiet" : "outline"}
+              className="rounded-full"
               onClick={() => onVote("up")}
             >
               <ThumbsUp className="h-4 w-4" aria-hidden="true" />
@@ -1177,56 +1349,72 @@ function ItineraryDetail({
             </Button>
             <Button
               type="button"
+              size="sm"
               variant={currentVote?.value === "down" ? "quiet" : "outline"}
+              className="rounded-full"
               onClick={() => onVote("down")}
             >
               <ThumbsDown className="h-4 w-4" aria-hidden="true" />
               {itineraryVoteLabels.down} {downCount}
             </Button>
-            {isOwner ? (
-              <Button type="button" variant="outline" onClick={onOpenSettings}>
-                <Settings2 className="h-4 w-4" aria-hidden="true" />
-                行程设置
-              </Button>
-            ) : null}
-            {routePlan ? (
-              <ExternalNavLink href={routePlan.href} label={routePlan.label} />
-            ) : null}
           </div>
 
         </div>
       </section>
 
-      <section className="grid gap-2 sm:grid-cols-3">
+      <section className="flex flex-wrap justify-end gap-2">
         {isOwner ? (
           <>
-            <Button type="button" onClick={onOrganizeWithAi}>
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
-              AI 整理行程
-            </Button>
-            <Button type="button" variant="outline" onClick={onManageItinerary}>
-              <CalendarDays className="h-4 w-4" aria-hidden="true" />
-              管理行程
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              disabled={isOrganizingWithAi}
+              onClick={onOrganizeWithAi}
+            >
+              {isOrganizingWithAi ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+              )}
+              {isOrganizingWithAi ? "整理中" : "AI 整理行程"}
             </Button>
             <Button
               type="button"
-              variant={version.status === "final" ? "secondary" : "outline"}
-              onClick={version.status === "final" ? onCancelFinal : onConfirmFinal}
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              onClick={onManageItinerary}
             >
-              {version.status === "final" ? (
-                <RotateCcw className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-              )}
-              {version.status === "final" ? "取消最终版" : "确认最终版"}
+              <CalendarDays className="h-4 w-4" aria-hidden="true" />
+              管理行程
             </Button>
           </>
-        ) : null}
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="rounded-full"
+            onClick={onManageItinerary}
+          >
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+            添加行程日
+          </Button>
+        )}
       </section>
+      {aiError ? (
+        <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
+          {aiError}
+        </p>
+      ) : null}
 
       <Timeline
         version={version}
         placeById={placeById}
+        currentMember={currentMember}
+        isOwner={isOwner}
         canEdit
         onAddItem={onAddItem}
         onManageDay={onManageDay}
@@ -1234,7 +1422,7 @@ function ItineraryDetail({
       />
 
       {votes.length > 0 ? (
-        <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+        <section className="surface-card">
           <h2 className="text-base font-semibold">投票理由</h2>
           <div className="mt-3 divide-y divide-border">
             {votes.map((vote) => (
@@ -1262,6 +1450,8 @@ function ItineraryDetail({
 function Timeline({
   version,
   placeById,
+  currentMember,
+  isOwner,
   canEdit,
   onAddItem,
   onManageDay,
@@ -1269,6 +1459,8 @@ function Timeline({
 }: {
   version: ItineraryVersion;
   placeById: Map<string, TravelPlace>;
+  currentMember: TripMember;
+  isOwner: boolean;
   canEdit: boolean;
   onAddItem: (dayId?: string) => void;
   onManageDay: (dayId: string) => void;
@@ -1277,9 +1469,16 @@ function Timeline({
   const [openMenuDayId, setOpenMenuDayId] = useState<string | null>(null);
 
   return (
-    <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+    <section className="surface-card">
       <div className="space-y-6">
-        {version.days.map((day) => (
+        {version.days.map((day) => {
+          const canDeleteDay = canDeleteItineraryDay(
+            day,
+            currentMember,
+            isOwner
+          );
+
+          return (
           <div key={day.id}>
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1306,10 +1505,10 @@ function Timeline({
                     <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                   </Button>
                   {openMenuDayId === day.id ? (
-                    <div className="absolute right-0 top-12 z-20 w-44 rounded-lg border border-border bg-white p-1 shadow-soft">
+                    <div className="absolute right-0 top-12 z-20 w-44 rounded-[1rem] border border-border bg-white p-1 shadow-lift">
                       <button
                         type="button"
-                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-muted"
+                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-secondary/60 hover:text-primary"
                         onClick={() => {
                           setOpenMenuDayId(null);
                           onAddItem(day.id);
@@ -1320,7 +1519,7 @@ function Timeline({
                       </button>
                       <button
                         type="button"
-                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-muted"
+                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-secondary/60 hover:text-primary"
                         onClick={() => {
                           setOpenMenuDayId(null);
                           onManageDay(day.id);
@@ -1329,9 +1528,10 @@ function Timeline({
                         <Pencil className="h-4 w-4" aria-hidden="true" />
                         管理本日活动
                       </button>
+                      {canDeleteDay ? (
                       <button
                         type="button"
-                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-coral hover:bg-muted"
+                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-coral hover:bg-secondary/60"
                         onClick={() => {
                           setOpenMenuDayId(null);
                           onDeleteDay(day.id);
@@ -1340,6 +1540,7 @@ function Timeline({
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
                         删除当天
                       </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -1351,7 +1552,7 @@ function Timeline({
               </p>
             ) : null}
 
-            <div className="mt-4 border-l-2 border-accent pl-4">
+            <div className="relative mt-4 pl-6 before:absolute before:bottom-5 before:left-[7px] before:top-3 before:w-0.5 before:rounded-full before:bg-primary/25">
               {day.items.map((item) => (
                 <TimelineItem
                   key={item.id}
@@ -1361,7 +1562,8 @@ function Timeline({
               ))}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -1376,7 +1578,7 @@ function TimelineItem({
 }) {
   return (
     <div className="relative pb-5 last:pb-0">
-      <span className="absolute -left-[1.42rem] top-1 flex h-4 w-4 rounded-full border-2 border-white bg-teal shadow" />
+      <span className="absolute left-[-1.5rem] top-1 z-10 flex h-4 w-4 rounded-full border-2 border-white bg-primary shadow-[0_0_0_4px_rgba(242,99,76,0.12)]" />
       <div className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
         <p className="text-sm font-semibold">
           {item.startTime || "--:--"} - {item.endTime || "--:--"}
@@ -1473,7 +1675,7 @@ function ItineraryVoteModal({
           </Button>
         </div>
         <textarea
-          className="focus-ring min-h-24 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm"
+          className="field-area w-full"
           placeholder="投票原因，不同意时必须写"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -1501,6 +1703,7 @@ type DayFormState = {
 function ManageItineraryModal({
   open,
   version,
+  canManageExistingDays,
   onClose,
   onAddDay,
   onUpdateDay,
@@ -1508,6 +1711,7 @@ function ManageItineraryModal({
 }: {
   open: boolean;
   version: ItineraryVersion;
+  canManageExistingDays: boolean;
   onClose: () => void;
   onAddDay: (input: Omit<ItineraryDayInput, "versionId">) => void;
   onUpdateDay: (
@@ -1518,6 +1722,7 @@ function ManageItineraryModal({
 }) {
   const [editingDayId, setEditingDayId] = useState<string | null>(null);
   const [selectedDayIds, setSelectedDayIds] = useState<string[]>([]);
+  const [pendingDeleteDays, setPendingDeleteDays] = useState<ItineraryDay[]>([]);
   const [form, setForm] = useState<DayFormState>(() =>
     defaultDayFormForVersion(version)
   );
@@ -1526,6 +1731,7 @@ function ManageItineraryModal({
     if (open) {
       setEditingDayId(null);
       setSelectedDayIds([]);
+      setPendingDeleteDays([]);
       setForm(defaultDayFormForVersion(version));
     }
   }, [open, version]);
@@ -1580,21 +1786,18 @@ function ManageItineraryModal({
   }
 
   function deleteSelectedDays() {
-    if (
-      selectedDayIds.length === 0 ||
-      !window.confirm(`删除选中的 ${selectedDayIds.length} 天安排？`)
-    ) {
+    if (selectedDayIds.length === 0) {
       return;
     }
 
-    onDeleteDays(selectedDayIds);
-    setSelectedDayIds([]);
-    setEditingDayId(null);
-    setForm(defaultDayFormForVersion(version));
+    setPendingDeleteDays(
+      version.days.filter((day) => selectedDayIds.includes(day.id))
+    );
   }
 
   return (
-    <Modal
+    <>
+      <Modal
       open={open}
       title="管理行程"
       description="在这里管理每天的日期、标题和城市；具体活动在本日活动里管理。"
@@ -1604,26 +1807,26 @@ function ManageItineraryModal({
         <form className="grid gap-3" onSubmit={submitDay}>
           <div className="grid grid-cols-2 gap-3">
             <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              className="field-control"
               type="date"
               value={form.date}
               onChange={(event) => updateForm("date", event.target.value)}
             />
             <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              className="field-control"
               placeholder="城市 / 区域"
               value={form.city}
               onChange={(event) => updateForm("city", event.target.value)}
             />
           </div>
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="当天标题"
             value={form.title}
             onChange={(event) => updateForm("title", event.target.value)}
           />
           <textarea
-            className="focus-ring min-h-20 rounded-lg border border-input bg-white px-3 py-2 text-sm"
+            className="field-area min-h-20"
             placeholder="当天摘要"
             value={form.summary}
             onChange={(event) => updateForm("summary", event.target.value)}
@@ -1650,6 +1853,7 @@ function ManageItineraryModal({
           </div>
         </form>
 
+        {canManageExistingDays ? (
         <div className="grid gap-2">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-medium text-muted-foreground">
@@ -1665,7 +1869,7 @@ function ManageItineraryModal({
               删除选中
             </Button>
           </div>
-          <div className="divide-y divide-border rounded-lg border border-border bg-white">
+          <div className="divide-y divide-border rounded-[1.125rem] border border-border bg-white">
             {version.days.map((day) => (
               <div key={day.id} className="grid gap-3 p-3">
                 <div className="flex items-start gap-3">
@@ -1703,9 +1907,7 @@ function ManageItineraryModal({
                     type="button"
                     variant="outline"
                     onClick={() => {
-                      if (window.confirm(`删除 ${formatDateLabel(day.date)}？`)) {
-                        onDeleteDays([day.id]);
-                      }
+                      setPendingDeleteDays([day]);
                     }}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -1716,6 +1918,124 @@ function ManageItineraryModal({
             ))}
           </div>
         </div>
+        ) : null}
+      </div>
+      </Modal>
+      <DeleteDaysConfirmModal
+        open={pendingDeleteDays.length > 0}
+        days={pendingDeleteDays}
+        onClose={() => setPendingDeleteDays([])}
+        onConfirm={() => {
+          const dayIds = pendingDeleteDays.map((day) => day.id);
+
+          if (dayIds.length === 0) {
+            setPendingDeleteDays([]);
+            return;
+          }
+
+          onDeleteDays(dayIds);
+          setPendingDeleteDays([]);
+          setSelectedDayIds([]);
+          setEditingDayId(null);
+          setForm(defaultDayFormForVersion(version));
+        }}
+      />
+    </>
+  );
+}
+
+function DeleteDaysConfirmModal({
+  open,
+  days,
+  onClose,
+  onConfirm
+}: {
+  open: boolean;
+  days: ItineraryDay[];
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const title = days.length > 1 ? "删除行程日" : "删除当天";
+  const description =
+    days.length > 1
+      ? `将删除选中的 ${days.length} 天行程。`
+      : days[0]
+        ? `${formatDateLabel(days[0].date)} / ${days[0].city}`
+        : "";
+
+  return (
+    <Modal
+      open={open}
+      title={title}
+      description={description}
+      onClose={onClose}
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[1rem] border border-coral/20 bg-secondary p-4 text-sm leading-6 text-muted-foreground">
+          删除后当天的活动安排也会一起移除，此操作无法撤销。
+        </div>
+        {days.length > 0 ? (
+          <div className="divide-y divide-border rounded-[1rem] border border-border bg-white">
+            {days.slice(0, 3).map((day) => (
+              <div key={day.id} className="px-3 py-2 text-sm">
+                <p className="font-medium">{day.title}</p>
+                <p className="mt-1 text-muted-foreground">
+                  {formatDateLabel(day.date)} / {day.city}
+                </p>
+              </div>
+            ))}
+            {days.length > 3 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">
+                另有 {days.length - 3} 天
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            确认删除
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DeleteItemConfirmModal({
+  open,
+  item,
+  onClose,
+  onConfirm
+}: {
+  open: boolean;
+  item: ItineraryItem | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      title="删除活动"
+      description={item?.title ?? ""}
+      onClose={onClose}
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[1rem] border border-coral/20 bg-secondary p-4 text-sm leading-6 text-muted-foreground">
+          删除后该活动会从当天行程中移除，此操作无法撤销。
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            确认删除
+          </Button>
+        </div>
       </div>
     </Modal>
   );
@@ -1725,6 +2045,8 @@ function ManageDayActivitiesModal({
   open,
   day,
   placeById,
+  currentMember,
+  isOwner,
   onClose,
   onEditActivity,
   onDeleteActivity
@@ -1732,6 +2054,8 @@ function ManageDayActivitiesModal({
   open: boolean;
   day: ItineraryDay;
   placeById: Map<string, TravelPlace>;
+  currentMember: TripMember;
+  isOwner: boolean;
   onClose: () => void;
   onEditActivity: (item: ItineraryItem) => void;
   onDeleteActivity: (item: ItineraryItem) => void;
@@ -1745,9 +2069,14 @@ function ManageDayActivitiesModal({
     >
       <div className="grid gap-3">
         {day.items.length > 0 ? (
-          <div className="divide-y divide-border rounded-lg border border-border bg-white">
+          <div className="divide-y divide-border rounded-[1.125rem] border border-border bg-white">
             {day.items.map((item) => {
               const place = item.placeId ? placeById.get(item.placeId) : undefined;
+              const canManageItem = canManageItineraryItem(
+                item,
+                currentMember,
+                isOwner
+              );
 
               return (
                 <div key={item.id} className="grid gap-3 p-3">
@@ -1762,6 +2091,7 @@ function ManageDayActivitiesModal({
                       </p>
                     ) : null}
                   </div>
+                  {canManageItem ? (
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button
                       type="button"
@@ -1780,12 +2110,13 @@ function ManageDayActivitiesModal({
                       删除
                     </Button>
                   </div>
+                  ) : null}
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="rounded-lg border border-dashed border-border bg-white p-6 text-center text-sm text-muted-foreground">
+          <div className="surface-card-muted text-center text-sm text-muted-foreground">
             今天还没有活动。
           </div>
         )}
@@ -1794,50 +2125,80 @@ function ManageDayActivitiesModal({
   );
 }
 
-function AiActionModal({
+function AiDraftPreviewModal({
   state,
-  onClose
+  onClose,
+  onConfirm
 }: {
-  state: AiActionState | null;
+  state: AiDraftPreviewState | null;
   onClose: () => void;
+  onConfirm: () => void;
 }) {
-  const mode = state?.mode ?? null;
-  const isRunning = state?.status === "running";
-  const isSuccess = state?.status === "success";
-  const isError = state?.status === "error";
-
   return (
     <Modal
-      open={Boolean(mode)}
-      title={mode === "organize" ? "AI 整理行程" : "生成 AI 草稿"}
+      open={Boolean(state)}
+      title={state?.mode === "organize" ? "预览整理后的路线" : "预览 AI 草稿"}
       description={
-        isRunning
-          ? "正在请求 AI，请稍等。"
-          : isSuccess
-            ? "草稿已添加到当前行程。"
-            : "没有写入草稿，请检查提示后再试。"
+        state?.mode === "organize"
+          ? "确认后会覆盖当前版本，不保留旧草稿。"
+          : "确认后会作为当前可编辑草稿。"
       }
-      onClose={isRunning ? () => undefined : onClose}
+      onClose={onClose}
     >
-      <div className="space-y-3 text-sm leading-6 text-muted-foreground">
-        {isRunning ? (
-          <p>AI 会根据行程标题、日期、酒店、地点池、投票理由和当前草稿生成新的可编辑版本。</p>
-        ) : null}
-        {state?.message ? (
-          <p
-            className={cn(
-              "rounded-lg border px-3 py-2",
-              isError
-                ? "border-sunset/30 bg-sunset/10 text-sunset"
-                : "border-teal/30 bg-teal/10 text-teal"
-            )}
-          >
-            {state.message}
-          </p>
-        ) : null}
-        <Button type="button" className="w-full" disabled={isRunning} onClick={onClose}>
-          {isRunning ? "生成中" : isSuccess ? "查看草稿" : "知道了"}
-        </Button>
+      <div className="space-y-4">
+        <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+          {state?.draft.days.map((day) => (
+            <section
+              key={`${day.date}-${day.title}`}
+              className="rounded-[1rem] border border-border bg-muted/35 p-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {day.date}
+                  </p>
+                  <h3 className="mt-1 font-semibold leading-6">
+                    {day.title}
+                  </h3>
+                </div>
+                {day.city ? <Badge tone="outline">{day.city}</Badge> : null}
+              </div>
+              {day.summary ? (
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {day.summary}
+                </p>
+              ) : null}
+              <div className="mt-3 divide-y divide-border">
+                {day.items.map((item, index) => (
+                  <div
+                    key={`${item.title}-${index}`}
+                    className="grid gap-1 py-2 text-sm first:pt-0 last:pb-0"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium leading-6">{item.title}</p>
+                      <span className="shrink-0 text-xs font-semibold text-primary">
+                        {item.startTime || "--:--"} - {item.endTime || "--:--"}
+                      </span>
+                    </div>
+                    {item.placeName || item.notes ? (
+                      <p className="leading-6 text-muted-foreground">
+                        {[item.placeName, item.notes].filter(Boolean).join(" / ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            {state?.mode === "organize" ? "覆盖当前版本" : "使用这版草稿"}
+          </Button>
+        </div>
       </div>
     </Modal>
   );
@@ -1845,7 +2206,7 @@ function AiActionModal({
 
 function SmallStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-muted/60 px-3 py-2">
+    <div className="rounded-lg border border-border bg-muted/55 px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-lg font-semibold">{value}</p>
     </div>
@@ -1858,7 +2219,7 @@ function MemberList({ members }: { members: TripMember[] }) {
       {members.map((member) => (
         <span
           key={member.id}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/45 px-2.5 py-1 text-xs font-medium text-muted-foreground"
         >
           <UsersRound className="h-3.5 w-3.5 text-teal" aria-hidden="true" />
           {member.displayName}
@@ -1880,13 +2241,13 @@ function PlacePicker({
   return (
     <fieldset className="grid gap-2">
       <legend className="text-sm font-medium">关联地点</legend>
-      <div className="grid max-h-72 gap-2 overflow-y-auto rounded-lg border border-border bg-muted/40 p-2">
+      <div className="grid max-h-72 gap-2 overflow-y-auto rounded-[1.125rem] border border-border bg-muted/45 p-2">
         <button
           type="button"
           className={cn(
             "focus-ring flex min-h-11 items-center justify-between rounded-lg border px-3 text-left text-sm transition",
             selectedPlaceId
-              ? "border-border bg-white hover:bg-muted/70"
+              ? "border-border bg-white hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
               : "border-primary bg-primary text-primary-foreground"
           )}
           onClick={() => onSelect("")}
@@ -1907,7 +2268,7 @@ function PlacePicker({
                 "focus-ring grid gap-1 rounded-lg border p-3 text-left transition",
                 selected
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-white hover:bg-muted/70"
+                  : "border-border bg-white hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
               )}
               onClick={() => onSelect(ranking.place.id)}
             >
@@ -1918,7 +2279,7 @@ function PlacePicker({
                 <span
                   className={cn(
                     "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
-                    selected ? "bg-white/20" : "bg-accent text-accent-foreground"
+                    selected ? "bg-white/20" : "border border-teal/15 bg-accent text-accent-foreground"
                   )}
                 >
                   {ranking.score} 分
@@ -1949,7 +2310,7 @@ function PlacePicker({
           );
         })}
         {rankings.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-white p-4 text-sm leading-6 text-muted-foreground">
+          <div className="rounded-lg border border-dashed border-border bg-white/85 p-4 text-sm leading-6 text-muted-foreground">
             可关联地点都已安排到活动里。
           </div>
         ) : null}
@@ -1962,7 +2323,7 @@ function ExternalNavLink({ href, label }: { href: string; label: string }) {
   return (
     <a
       className={cn(
-        "focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground transition hover:bg-muted/70"
+        "focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
       )}
       href={href}
       rel="noreferrer"
@@ -2106,33 +2467,26 @@ function memberName(members: TripMember[], memberId: string) {
   return members.find((member) => member.id === memberId)?.displayName ?? "成员";
 }
 
+function canDeleteItineraryDay(
+  day: ItineraryDay,
+  currentMember: TripMember,
+  isOwner: boolean
+) {
+  return isOwner || day.createdByMemberId === currentMember.id;
+}
+
+function canManageItineraryItem(
+  item: ItineraryItem,
+  currentMember: TripMember,
+  isOwner: boolean
+) {
+  return isOwner || item.createdByMemberId === currentMember.id;
+}
+
 function placeMetaText(place: TravelPlace) {
   return [place.city, place.category, place.suggestedDuration]
     .filter(Boolean)
     .join(" / ");
-}
-
-function memberBelongsToUser(member: TripMember, user: AuthUser | null) {
-  if (!user) {
-    return false;
-  }
-
-  return (
-    member.appUserId === user.id ||
-    member.displayName.trim().toLowerCase() === user.username
-  );
-}
-
-function isTripManagedByUser(group: TripGroupSummary, user: AuthUser | null) {
-  return group.members.some(
-    (member) => member.role === "owner" && memberBelongsToUser(member, user)
-  );
-}
-
-function isTripJoinedByUser(group: TripGroupSummary, user: AuthUser | null) {
-  return group.members.some(
-    (member) => member.role !== "owner" && memberBelongsToUser(member, user)
-  );
 }
 
 async function copyText(text: string) {

@@ -36,6 +36,29 @@ function cloneData(data: TripPhase1Data): TripPhase1Data {
   return JSON.parse(JSON.stringify(data)) as TripPhase1Data;
 }
 
+export function compactTripItineraryHistory(data: TripPhase1Data): TripPhase1Data {
+  const next = cloneData(data);
+  const currentVersion =
+    next.itineraryVersions.find(
+      (version) => version.id === next.currentItineraryVersionId
+    ) ?? next.itineraryVersions[0];
+
+  if (!currentVersion) {
+    next.currentItineraryVersionId = "";
+    next.itineraryVersions = [];
+    next.itineraryVotes = [];
+    return next;
+  }
+
+  next.currentItineraryVersionId = currentVersion.id;
+  next.itineraryVersions = [currentVersion];
+  next.itineraryVotes = next.itineraryVotes.filter(
+    (vote) => vote.versionId === currentVersion.id
+  );
+
+  return next;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -51,18 +74,20 @@ function normalizeLookupText(value: string) {
 }
 
 export function summarizeTripGroup(data: TripPhase1Data): TripGroupSummary {
+  const currentData = compactTripItineraryHistory(data);
+
   return {
-    id: data.trip.id,
-    name: data.trip.name,
-    subtitle: data.trip.subtitle,
-    startDate: data.trip.startDate,
-    endDate: data.trip.endDate,
-    phase: data.trip.phase,
-    inviteCode: data.trip.inviteCode,
-    inviteUrl: data.trip.inviteUrl,
-    members: data.members,
-    placeCount: data.places.length,
-    updatedAt: data.updatedAt
+    id: currentData.trip.id,
+    name: currentData.trip.name,
+    subtitle: currentData.trip.subtitle,
+    startDate: currentData.trip.startDate,
+    endDate: currentData.trip.endDate,
+    phase: currentData.trip.phase,
+    inviteCode: currentData.trip.inviteCode,
+    inviteUrl: currentData.trip.inviteUrl,
+    members: currentData.members,
+    placeCount: currentData.places.length,
+    updatedAt: currentData.updatedAt
   };
 }
 
@@ -85,7 +110,7 @@ function readStoredTripData(tripId: string): TripPhase1Data | null {
       parsed.data?.trip?.phase &&
       Array.isArray(parsed.data.itineraryVersions)
     ) {
-      return parsed.data;
+      return compactTripItineraryHistory(parsed.data);
     }
   } catch {
     window.localStorage.removeItem(storageKey(tripId));
@@ -181,13 +206,14 @@ export function loadLocalTripData(tripId: string): TripPhase1Data {
   const storedData = readStoredTripData(tripId);
 
   if (!storedData) {
-    const seeded = createSeedTripData(tripId);
+    const seeded = compactTripItineraryHistory(createSeedTripData(tripId));
     saveLocalTripData(seeded);
     return seeded;
   }
 
-  upsertTripGroup(storedData);
-  return storedData;
+  const compactedData = compactTripItineraryHistory(storedData);
+  upsertTripGroup(compactedData);
+  return compactedData;
 }
 
 export function saveLocalTripData(data: TripPhase1Data) {
@@ -195,15 +221,17 @@ export function saveLocalTripData(data: TripPhase1Data) {
     return;
   }
 
+  const compactedData = compactTripItineraryHistory(data);
+
   window.localStorage.setItem(
-    storageKey(data.trip.id),
-    JSON.stringify({ version: storageVersion, data })
+    storageKey(compactedData.trip.id),
+    JSON.stringify({ version: storageVersion, data: compactedData })
   );
-  upsertTripGroup(data);
+  upsertTripGroup(compactedData);
 }
 
 export function resetLocalTripData(tripId: string) {
-  const seeded = createSeedTripData(tripId);
+  const seeded = compactTripItineraryHistory(createSeedTripData(tripId));
   saveLocalTripData(seeded);
   return seeded;
 }
@@ -370,6 +398,7 @@ export function addItineraryItemToTrip(
                     {
                       id: makeId("item"),
                       dayId: input.dayId,
+                      createdByMemberId: next.currentMemberId,
                       title: input.title.trim(),
                       placeId: input.placeId || undefined,
                       startTime: input.startTime.trim(),
@@ -409,6 +438,7 @@ export function addItineraryDayToTrip(
             {
               id: dayId,
               versionId: input.versionId,
+              createdByMemberId: next.currentMemberId,
               date: input.date,
               title: input.title.trim(),
               city: input.city.trim(),
@@ -710,10 +740,12 @@ export function addAiItineraryDraftToTrip(
 ) {
   const next = cloneData(data);
   const timestamp = nowIso();
-  const versionNumber =
-    Math.max(0, ...next.itineraryVersions.map((version) => version.versionNumber)) +
-    1;
-  const versionId = makeId("itinerary-ai");
+  const currentVersion =
+    next.itineraryVersions.find(
+      (version) => version.id === next.currentItineraryVersionId
+    ) ?? next.itineraryVersions[0];
+  const versionNumber = currentVersion?.versionNumber ?? 1;
+  const versionId = currentVersion?.id ?? makeId("itinerary-ai");
   const placeByName = new Map(
     next.places.flatMap((place) => {
       const names = [place.name, place.name.split(/\s+/)[0]]
@@ -723,18 +755,15 @@ export function addAiItineraryDraftToTrip(
       return names.map((name) => [name, place] as const);
     })
   );
-
-  next.currentItineraryVersionId = versionId;
-  next.trip.phase = "itinerary_voting";
-  next.itineraryVersions.push({
+  const nextVersion = {
     id: versionId,
     tripId: next.trip.id,
     versionNumber,
-    label: draft.label?.trim() || `AI 草稿 v${versionNumber}`,
-    status: "draft",
-    source: "ai",
-    createdByMemberId: next.currentMemberId,
-    createdAt: timestamp,
+    label: draft.label?.trim() || `AI 草稿`,
+    status: "draft" as const,
+    source: "ai" as const,
+    createdByMemberId: currentVersion?.createdByMemberId ?? next.currentMemberId,
+    createdAt: currentVersion?.createdAt ?? timestamp,
     updatedAt: timestamp,
     days: draft.days.map((day) => {
       const dayId = makeId("day-ai");
@@ -742,6 +771,7 @@ export function addAiItineraryDraftToTrip(
       return {
         id: dayId,
         versionId,
+        createdByMemberId: next.currentMemberId,
         date: day.date,
         title: day.title.trim() || day.date,
         city: day.city?.trim() || "",
@@ -753,6 +783,7 @@ export function addAiItineraryDraftToTrip(
           return {
             id: makeId("item-ai"),
             dayId,
+            createdByMemberId: next.currentMemberId,
             title: item.title.trim(),
             placeId: place?.id,
             startTime: item.startTime?.trim() || "",
@@ -763,7 +794,14 @@ export function addAiItineraryDraftToTrip(
         })
       };
     })
-  });
+  };
+
+  next.currentItineraryVersionId = versionId;
+  next.trip.phase = "itinerary_voting";
+  next.itineraryVersions = [nextVersion];
+  next.itineraryVotes = next.itineraryVotes.filter(
+    (vote) => vote.versionId !== versionId
+  );
   next.updatedAt = timestamp;
 
   return next;

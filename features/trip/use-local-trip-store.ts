@@ -25,6 +25,7 @@ import {
   setActiveTripMemberId
 } from "./active-member";
 import { createSeedTripData } from "./seed-data";
+import { localTripDataChangeEvent } from "./trip-events";
 import { loadTripData, resetTripData, saveTripData } from "./trip-storage";
 import type {
   AiItineraryDraft,
@@ -38,7 +39,6 @@ import type {
 } from "./types";
 
 type TripProducer = (current: TripPhase1Data) => TripPhase1Data;
-const localTripDataChangeEvent = "tropic-together:local-trip-data-change";
 
 type LocalTripDataChangeDetail = {
   tripId: string;

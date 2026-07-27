@@ -3,25 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --background: 42 58% 96%;
-  --foreground: 192 29% 14%;
+  --background: 45 40% 98%;
+  --foreground: 0 0% 9%;
   --card: 0 0% 100%;
-  --card-foreground: 192 29% 14%;
-  --primary: 188 72% 28%;
+  --card-foreground: 0 0% 9%;
+  --primary: 8 86% 62%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 43 86% 90%;
-  --secondary-foreground: 30 41% 22%;
-  --accent: 164 44% 88%;
-  --accent-foreground: 177 64% 19%;
-  --muted: 42 42% 91%;
-  --muted-foreground: 193 16% 40%;
-  --border: 37 32% 84%;
-  --input: 37 32% 84%;
-  --ring: 188 72% 28%;
-  --coral: 9 78% 62%;
-  --teal: 181 54% 39%;
-  --sunset: 33 92% 56%;
-  --leaf: 135 35% 36%;
+  --secondary: 12 100% 96%;
+  --secondary-foreground: 8 62% 32%;
+  --accent: 170 34% 94%;
+  --accent-foreground: 173 35% 34%;
+  --muted: 45 22% 94%;
+  --muted-foreground: 225 4% 45%;
+  --border: 45 12% 92%;
+  --input: 45 12% 88%;
+  --ring: 8 86% 62%;
+  --coral: 8 86% 62%;
+  --teal: 173 35% 34%;
+  --sunset: 36 65% 57%;
+  --leaf: 145 30% 38%;
 }
 
 * {
@@ -34,12 +34,14 @@ html {
 
 body {
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, rgba(255, 249, 238, 0.96) 0%, rgba(246, 251, 248, 0.98) 54%, rgba(255, 247, 234, 1) 100%);
+  background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family:
     Inter,
+    "SF Pro Text",
+    "HarmonyOS Sans SC",
     "PingFang SC",
+    "Source Han Sans SC",
     "Microsoft YaHei",
     "Noto Sans CJK SC",
     system-ui,
@@ -48,10 +50,107 @@ body {
 }
 
 ::selection {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background: hsl(var(--secondary));
+  color: hsl(var(--primary));
 }
 
 .focus-ring {
   @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+}
+
+@layer base {
+  input,
+  textarea,
+  select {
+    @apply placeholder:text-muted-foreground/65;
+  }
+
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    @apply duration-200;
+  }
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-4xl space-y-6;
+  }
+
+  .page-kicker {
+    @apply text-sm font-medium text-muted-foreground;
+  }
+
+  .page-title {
+    font-family:
+      "Source Han Serif SC",
+      "Noto Serif CJK SC",
+      "Songti SC",
+      "SimSun",
+      serif;
+    @apply mt-1 text-[1.75rem] font-semibold leading-tight tracking-normal text-foreground sm:text-[2rem];
+  }
+
+  .section-title {
+    @apply text-lg font-semibold leading-snug text-foreground;
+  }
+
+  .surface-card {
+    @apply rounded-[1.25rem] border border-border bg-card p-5 text-card-foreground shadow-soft;
+  }
+
+  .surface-card-muted {
+    @apply rounded-[1.25rem] border border-dashed border-border bg-white/80 p-6 shadow-soft;
+  }
+
+  .field-control {
+    @apply focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm text-foreground shadow-[inset_0_1px_0_rgba(23,23,23,0.02)];
+  }
+
+  .field-area {
+    @apply focus-ring min-h-24 rounded-lg border border-input bg-white px-3 py-2 text-sm leading-6 text-foreground shadow-[inset_0_1px_0_rgba(23,23,23,0.02)];
+  }
+
+  .eastern-corner {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .eastern-corner::before {
+    pointer-events: none;
+    content: "";
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: -1;
+    width: min(38vw, 360px);
+    height: min(38vw, 360px);
+    opacity: 0.04;
+    background-image:
+      linear-gradient(90deg, hsl(var(--primary)) 1px, transparent 1px),
+      linear-gradient(0deg, hsl(var(--primary)) 1px, transparent 1px);
+    background-size: 24px 24px;
+    mask-image: linear-gradient(135deg, black 0%, transparent 68%);
+  }
+
+  .corner-mark {
+    @apply relative overflow-hidden;
+  }
+
+  .corner-mark::after {
+    pointer-events: none;
+    content: "";
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    width: 84px;
+    height: 84px;
+    opacity: 0.045;
+    background-image:
+      linear-gradient(90deg, hsl(var(--primary)) 1px, transparent 1px),
+      linear-gradient(0deg, hsl(var(--primary)) 1px, transparent 1px);
+    background-size: 14px 14px;
+  }
 }

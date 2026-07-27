@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, Home, MapPin, Plane, UserRound } from "lucide-react";
-import { useLocalTripStore } from "@/features/trip/use-local-trip-store";
+import { usePendingItineraryTripCount } from "@/features/trip/use-pending-itinerary-trip-count";
 import { cn } from "@/lib/utils";
 
 function tripInfoFromPath(pathname: string) {
@@ -21,16 +21,7 @@ function tripInfoFromPath(pathname: string) {
 export function DesktopTripNav() {
   const pathname = usePathname();
   const { tripId, tripBase } = tripInfoFromPath(pathname);
-  const { data } = useLocalTripStore(tripId);
-  const pendingItineraryCount = data.itineraryVersions.filter(
-    (version) =>
-      version.status !== "final" &&
-      !data.itineraryVotes.some(
-        (vote) =>
-          vote.versionId === version.id &&
-          vote.memberId === data.currentMemberId
-      )
-  ).length;
+  const pendingItineraryCount = usePendingItineraryTripCount(tripId);
   const navItems = [
     { label: "首页", href: tripBase, icon: Home, ready: true, badge: 0 },
     {
@@ -45,15 +36,15 @@ export function DesktopTripNav() {
   ];
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-border/80 bg-white/75 px-5 py-6 backdrop-blur lg:block">
+    <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-border/80 bg-white/82 px-5 py-6 shadow-[12px_0_40px_rgba(23,23,23,0.035)] backdrop-blur-xl lg:block">
       <div className="flex h-full flex-col">
         <Link href={tripBase} className="focus-ring rounded-lg p-2">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <span className="flex h-11 w-11 items-center justify-center rounded-[1.125rem] bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(242,99,76,0.22)]">
               <Plane className="h-5 w-5" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-sm font-semibold">Tropic Together</p>
+              <p className="text-sm font-semibold text-foreground">Tropic Together</p>
               <p className="text-xs text-muted-foreground">Penang x KK 2026</p>
             </div>
           </div>
@@ -68,8 +59,8 @@ export function DesktopTripNav() {
             const className = cn(
               "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition",
               active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ? "bg-secondary text-primary shadow-[inset_0_0_0_1px_rgba(242,99,76,0.12)]"
+                : "text-muted-foreground hover:bg-secondary/55 hover:text-primary",
               !item.ready && "cursor-not-allowed opacity-60 hover:bg-transparent"
             );
 
@@ -97,9 +88,9 @@ export function DesktopTripNav() {
           })}
         </nav>
 
-        <div className="mt-auto rounded-lg border border-border bg-secondary/60 p-4 text-sm leading-6 text-secondary-foreground">
-          <p className="font-medium">Phase 1 数据模式</p>
-          <p className="mt-1 text-xs">
+        <div className="corner-mark mt-auto rounded-[1.25rem] border border-primary/10 bg-secondary/60 p-4 text-sm leading-6 text-secondary-foreground">
+          <p className="font-medium text-foreground">Phase 1 数据模式</p>
+          <p className="mt-1 text-xs text-muted-foreground">
             配置 Supabase 后远端同步；未配置时继续使用本地数据。
           </p>
         </div>
@@ -117,7 +108,7 @@ function NavBadge({ count, active }: { count: number; active: boolean }) {
     <span
       className={cn(
         "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold",
-        active ? "bg-white/20 text-primary-foreground" : "bg-coral text-white"
+        active ? "bg-primary text-white" : "bg-primary text-white"
       )}
     >
       {count}

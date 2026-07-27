@@ -49,12 +49,12 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-4">
-      <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+    <main className="page-shell">
+      <section className="corner-mark surface-card">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-muted-foreground">邀请</p>
-            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-normal">
+            <p className="page-kicker">邀请</p>
+            <h1 className="page-title flex items-center gap-2">
               <Ticket className="h-5 w-5 text-teal" aria-hidden="true" />
               加入行程
             </h1>
@@ -64,23 +64,23 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
       </section>
 
       {auth.isLoading ? (
-        <section className="rounded-lg border border-border bg-white p-4 text-sm text-muted-foreground shadow-soft">
+        <section className="surface-card text-sm text-muted-foreground">
           正在读取账号
         </section>
       ) : auth.user ? (
-        <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
+        <section className="surface-card">
           <p className="text-sm leading-6 text-muted-foreground">
             当前账号：{auth.user.username}
           </p>
           <form className="mt-4 grid gap-3" onSubmit={submitJoin}>
             <input
-              className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+              className="field-control"
               placeholder="行程昵称，可选"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
             />
             {joinError ? (
-              <p className="rounded-lg border border-coral/25 bg-coral/10 px-3 py-2 text-sm leading-6 text-coral">
+              <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
                 {joinError}
               </p>
             ) : null}

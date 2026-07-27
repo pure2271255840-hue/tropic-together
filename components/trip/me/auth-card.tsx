@@ -43,8 +43,8 @@ export function AuthCard({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
-      <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/50 p-1">
+    <section className="surface-card">
+      <div className="grid grid-cols-2 gap-1 rounded-[1.125rem] border border-border bg-muted/55 p-1">
         <ModeButton
           active={mode === "login"}
           label="登录"
@@ -59,14 +59,18 @@ export function AuthCard({
 
       <form className="mt-4 grid gap-3" onSubmit={submit}>
         <input
-          className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+          className="field-control"
+          id="auth-username"
+          name="username"
           autoComplete="username"
           placeholder="用户名"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
         />
         <input
-          className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+          className="field-control"
+          id="auth-password"
+          name="password"
           autoComplete={
             mode === "login" ? "current-password" : "new-password"
           }
@@ -76,7 +80,7 @@ export function AuthCard({
           onChange={(event) => setPassword(event.target.value)}
         />
         {error ? (
-          <p className="rounded-lg border border-coral/25 bg-coral/10 px-3 py-2 text-sm leading-6 text-coral">
+          <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
             {error}
           </p>
         ) : null}
@@ -109,10 +113,10 @@ function ModeButton({
     <button
       type="button"
       className={cn(
-        "focus-ring h-10 rounded-md px-3 text-sm font-medium transition",
+        "focus-ring h-10 rounded-lg px-3 text-sm font-medium transition",
         active
           ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:bg-white hover:text-foreground"
+          : "text-muted-foreground hover:bg-white hover:text-primary"
       )}
       onClick={onClick}
     >

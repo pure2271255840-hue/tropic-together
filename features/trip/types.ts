@@ -83,6 +83,7 @@ export type PlaceVote = {
 export type ItineraryItem = {
   id: string;
   dayId: string;
+  createdByMemberId?: string;
   title: string;
   placeId?: string;
   startTime: string;
@@ -94,6 +95,7 @@ export type ItineraryItem = {
 export type ItineraryDay = {
   id: string;
   versionId: string;
+  createdByMemberId?: string;
   date: string;
   title: string;
   city: string;

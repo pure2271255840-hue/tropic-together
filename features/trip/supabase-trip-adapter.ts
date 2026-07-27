@@ -1,6 +1,9 @@
 "use client";
 
-import { summarizeTripGroup } from "./local-storage-adapter";
+import {
+  compactTripItineraryHistory,
+  summarizeTripGroup
+} from "./local-storage-adapter";
 import type { TripGroupSummary, TripPhase1Data } from "./types";
 
 const tableName = "trip_phase1_workspaces";
@@ -88,7 +91,7 @@ export async function listSupabaseTripGroups(): Promise<TripGroupSummary[]> {
 
   return rows
     .filter((row) => isTripPhase1Data(row.data))
-    .map((row) => summarizeTripGroup(row.data));
+    .map((row) => summarizeTripGroup(compactTripItineraryHistory(row.data)));
 }
 
 export async function loadSupabaseTripData(
@@ -111,12 +114,13 @@ export async function loadSupabaseTripData(
   );
   const data = rows[0]?.data;
 
-  return isTripPhase1Data(data) ? data : null;
+  return isTripPhase1Data(data) ? compactTripItineraryHistory(data) : null;
 }
 
 export async function saveSupabaseTripData(data: TripPhase1Data) {
   const url = restUrl("?on_conflict=id");
   const headers = requestHeaders("resolution=merge-duplicates,return=minimal");
+  const compactedData = compactTripItineraryHistory(data);
 
   if (!url || !headers) {
     return;
@@ -126,9 +130,9 @@ export async function saveSupabaseTripData(data: TripPhase1Data) {
     method: "POST",
     headers,
     body: JSON.stringify({
-      id: data.trip.id,
-      data,
-      updated_at: data.updatedAt
+      id: compactedData.trip.id,
+      data: compactedData,
+      updated_at: compactedData.updatedAt
     })
   }).then((response) =>
     response.ok

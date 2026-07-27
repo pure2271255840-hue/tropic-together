@@ -213,13 +213,13 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
 
   if (!selectedTripId) {
     return (
-      <main className="mx-auto w-full max-w-3xl space-y-4">
+      <main className="page-shell">
         <section className="space-y-3">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">
+            <p className="page-kicker">
               先选择行程
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal">地点</h1>
+            <h1 className="page-title">地点</h1>
           </div>
         </section>
 
@@ -232,13 +232,13 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             />
           ))}
           {tripGroups.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-white p-6 text-center shadow-soft">
+            <div className="surface-card-muted text-center">
               <p className="text-base font-semibold">还没有行程数据</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 请先到行程页导入测试行程或发起新行程，再进入地点池。
               </p>
               <Link
-                className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.22)] transition hover:bg-primary/90"
                 href={`/trip/${tripId}/itinerary`}
               >
                 去行程页
@@ -251,7 +251,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-4">
+    <main className="page-shell">
       <section className="space-y-3">
         <Button
           type="button"
@@ -267,10 +267,10 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
         </Button>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-muted-foreground">
+            <p className="page-kicker">
               {data.trip.name}
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal">地点池</h1>
+            <h1 className="page-title">地点池</h1>
           </div>
           <Badge tone={pendingCount > 0 ? "sunset" : "teal"} className="shrink-0">
             {pendingCount} 待投票
@@ -286,16 +286,16 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
       </section>
 
       <section className="space-y-3">
-        <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/50 p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-[1.125rem] border border-border bg-muted/55 p-1">
           {filters.map((item) => (
             <button
               key={item.value}
               type="button"
               className={cn(
-                "focus-ring h-10 rounded-md px-3 text-sm font-medium transition",
+                "focus-ring h-10 rounded-lg px-3 text-sm font-medium transition",
                 filter === item.value
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-white hover:text-foreground"
+                  : "text-muted-foreground hover:bg-white hover:text-primary"
               )}
               onClick={() => setFilter(item.value)}
             >
@@ -323,7 +323,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
         </div>
 
         {visibleRankings.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-white p-6 text-center text-sm text-muted-foreground">
+          <div className="surface-card-muted text-center text-sm text-muted-foreground">
             {filter === "pending" ? "当前没有待投票地点。" : "当前没有地点。"}
           </div>
         ) : null}
@@ -347,7 +347,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
       >
         <form className="grid gap-3" onSubmit={handleSubmit}>
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="地点名"
             value={form.name}
             onChange={(event) => updateForm("name", event.target.value)}
@@ -375,19 +375,19 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             />
           </div>
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="预计停留时间"
             value={form.suggestedDuration}
             onChange={(event) => updateForm("suggestedDuration", event.target.value)}
           />
           <input
-            className="focus-ring h-11 rounded-lg border border-input bg-white px-3 text-sm"
+            className="field-control"
             placeholder="地址或地图链接"
             value={form.location}
             onChange={(event) => updateForm("location", event.target.value)}
           />
           <textarea
-            className="focus-ring min-h-20 rounded-lg border border-input bg-white px-3 py-2 text-sm"
+            className="field-area min-h-20"
             placeholder="地点备注"
             value={form.notes}
             onChange={(event) => updateForm("notes", event.target.value)}
@@ -431,7 +431,7 @@ function TripGroupPlaceCard({
   onOpen: () => void;
 }) {
   return (
-    <article className="rounded-lg border border-border bg-white p-4 shadow-soft">
+    <article className="corner-mark surface-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold leading-snug">{group.name}</h2>
@@ -477,9 +477,9 @@ function PlaceCard({
   const placeMeta = placeMetaText(place);
 
   return (
-    <article className="rounded-lg border border-border bg-white p-4 shadow-soft">
+    <article className="surface-card">
       <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-accent-foreground">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-secondary text-sm font-semibold text-primary">
           {ranking.rank}
         </span>
         <div className="min-w-0 flex-1">
@@ -592,7 +592,7 @@ function PlaceVoteModal({
           </Button>
         </div>
         <textarea
-          className="focus-ring min-h-24 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm"
+          className="field-area w-full"
           placeholder="投票原因"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -646,7 +646,7 @@ function TagButton({
         "focus-ring h-11 rounded-lg border px-3 text-sm font-medium transition",
         active
           ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-white text-foreground hover:bg-muted/70"
+          : "border-border bg-white text-foreground hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
       )}
       onClick={onClick}
     >
@@ -668,10 +668,10 @@ function TinyTagButton({
     <button
       type="button"
       className={cn(
-        "focus-ring h-8 rounded-md border px-2.5 text-xs font-medium transition",
+        "focus-ring h-8 rounded-lg border px-2.5 text-xs font-medium transition",
         active
           ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-white text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+          : "border-border bg-white text-muted-foreground hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
       )}
       onClick={onClick}
     >
@@ -684,7 +684,7 @@ function ExternalNavLink({ href, label }: { href: string; label: string }) {
   return (
     <a
       className={cn(
-        "focus-ring inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground transition hover:bg-muted/70"
+        "focus-ring inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
       )}
       href={href}
       rel="noreferrer"
@@ -698,7 +698,7 @@ function ExternalNavLink({ href, label }: { href: string; label: string }) {
 
 function SmallStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-muted/60 px-3 py-2">
+    <div className="rounded-lg border border-border bg-muted/55 px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-lg font-semibold">{value}</p>
     </div>
@@ -711,7 +711,7 @@ function MemberList({ members }: { members: TripMember[] }) {
       {members.map((member) => (
         <span
           key={member.id}
-          className="rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground"
+          className="rounded-lg border border-border bg-muted/45 px-2.5 py-1 text-xs font-medium text-muted-foreground"
         >
           {member.displayName}
         </span>

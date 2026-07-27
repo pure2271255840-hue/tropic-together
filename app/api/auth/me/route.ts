@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authErrorResponse, getAuthenticatedUser } from "@/features/auth/server";
+import {
+  clearSessionCookie,
+  getAuthenticatedUser
+} from "@/features/auth/server";
 
 export const runtime = "nodejs";
 
@@ -9,8 +12,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ user });
   } catch (error) {
-    const { message, status } = authErrorResponse(error);
+    console.error("Failed to restore auth session", error);
 
-    return NextResponse.json({ message }, { status });
+    const response = NextResponse.json({ user: null });
+    clearSessionCookie(response);
+
+    return response;
   }
 }

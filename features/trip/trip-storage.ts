@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  compactTripItineraryHistory,
   deleteLocalTripGroup,
   listLocalTripGroups,
   loadLocalTripData,
@@ -26,7 +27,18 @@ function persistRemote(data: TripPhase1Data) {
     return;
   }
 
-  void saveSupabaseTripData(data).catch(logSupabaseFallback);
+  void saveSupabaseTripData(compactTripItineraryHistory(data)).catch(
+    logSupabaseFallback
+  );
+}
+
+function hasItineraryHistory(data: TripPhase1Data) {
+  const currentVersionId = data.currentItineraryVersionId;
+
+  return (
+    data.itineraryVersions.length > 1 ||
+    data.itineraryVotes.some((vote) => vote.versionId !== currentVersionId)
+  );
 }
 
 export function isRemoteTripStorageEnabled() {
@@ -55,12 +67,18 @@ export async function loadTripData(tripId: string) {
     const remoteData = await loadSupabaseTripData(tripId);
 
     if (remoteData) {
-      saveLocalTripData(remoteData);
-      return remoteData;
+      const compactedData = compactTripItineraryHistory(remoteData);
+
+      saveLocalTripData(compactedData);
+      if (hasItineraryHistory(remoteData)) {
+        void saveSupabaseTripData(compactedData).catch(logSupabaseFallback);
+      }
+
+      return compactedData;
     }
 
     deleteLocalTripGroup(tripId);
-    return createSeedTripData(tripId);
+    return compactTripItineraryHistory(createSeedTripData(tripId));
   } catch (error) {
     logSupabaseFallback(error);
     return loadLocalTripData(tripId);
@@ -68,14 +86,16 @@ export async function loadTripData(tripId: string) {
 }
 
 export async function saveTripData(data: TripPhase1Data) {
-  saveLocalTripData(data);
+  const compactedData = compactTripItineraryHistory(data);
+
+  saveLocalTripData(compactedData);
 
   if (!isSupabaseTripStorageConfigured()) {
     return;
   }
 
   try {
-    await saveSupabaseTripData(data);
+    await saveSupabaseTripData(compactedData);
   } catch (error) {
     logSupabaseFallback(error);
   }
@@ -101,7 +121,7 @@ export function resetTripData(tripId: string) {
 }
 
 export async function importSeedTripData(tripId: string) {
-  const seeded = createSeedTripData(tripId);
+  const seeded = compactTripItineraryHistory(createSeedTripData(tripId));
 
   await saveTripData(seeded);
   return seeded;
