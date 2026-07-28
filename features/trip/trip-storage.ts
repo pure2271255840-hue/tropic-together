@@ -144,6 +144,16 @@ export async function saveTripData(data: TripPhase1Data) {
   }
 }
 
+export async function saveTripDataStrict(data: TripPhase1Data) {
+  const compactedData = compactTripItineraryHistory(data);
+
+  if (isSupabaseTripStorageConfigured()) {
+    await saveSupabaseTripData(compactedData);
+  }
+
+  saveLocalTripData(compactedData);
+}
+
 export async function deleteTripData(tripId: string) {
   deleteLocalTripGroup(tripId);
 

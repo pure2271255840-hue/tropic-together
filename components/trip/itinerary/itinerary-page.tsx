@@ -12,6 +12,7 @@ import {
   ExternalLink,
   House,
   Lock,
+  LogOut,
   MapPin,
   Pencil,
   Plus,
@@ -52,7 +53,9 @@ import {
 import {
   deleteTripData,
   listTripGroups,
-  saveTripData
+  loadTripData,
+  saveTripData,
+  saveTripDataStrict
 } from "@/features/trip/trip-storage";
 import {
   readCachedTripGroups,
@@ -66,8 +69,16 @@ import {
 } from "@/features/trip/invite-code";
 import {
   isJoinedTripForUser,
-  isTripManagedByUser
+  isTripManagedByUser,
+  memberBelongsToUser
 } from "@/features/trip/trip-workflow";
+import {
+  memberDisplayNameExists,
+  memberHasTripContributions,
+  removeTripMemberFromTrip,
+  renameTripMemberInTrip
+} from "@/features/trip/member-actions";
+import { localTripDataChangeEvent } from "@/features/trip/trip-events";
 import {
   buildPlaceRankings,
   formatDateLabel,
@@ -87,7 +98,8 @@ import type {
   ItineraryVoteValue,
   TravelPlace,
   TripGroupSummary,
-  TripMember
+  TripMember,
+  TripPhase1Data
 } from "@/features/trip/types";
 import {
   useTripDataStore,
@@ -135,6 +147,67 @@ type AiDraftPreviewState = {
   draft: AiItineraryDraft;
 };
 
+type EditingTripMemberState = {
+  group: TripGroupSummary;
+  member: TripMember;
+};
+
+type BlockedTripLeaveState = {
+  group: TripGroupSummary;
+  message: string;
+};
+
+function notifySavedTripData(data: TripPhase1Data) {
+  window.dispatchEvent(
+    new CustomEvent(localTripDataChangeEvent, {
+      detail: {
+        tripId: data.trip.id,
+        data
+      }
+    })
+  );
+}
+
+function currentUserMemberForGroup(
+  group: TripGroupSummary,
+  user: AuthUser | null
+) {
+  return (
+    group.members.find((member) => memberBelongsToUser(member, user)) ?? null
+  );
+}
+
+function currentUserMemberInTripData(
+  tripData: TripPhase1Data,
+  user: AuthUser | null
+) {
+  return (
+    tripData.members.find((member) => memberBelongsToUser(member, user)) ?? null
+  );
+}
+
+function orderedMembersForGroup(
+  members: TripMember[],
+  currentMemberId?: string
+) {
+  const owner =
+    members.find((member) => member.role === "owner") ?? members[0] ?? null;
+  const currentMember = currentMemberId
+    ? members.find((member) => member.id === currentMemberId) ?? null
+    : null;
+  const ordered = [owner, currentMember].filter(
+    (member, index, candidates) =>
+      member &&
+      candidates.findIndex((candidate) => candidate?.id === member.id) === index
+  ) as TripMember[];
+  const orderedIds = new Set(ordered.map((member) => member.id));
+
+  return [
+    ...ordered,
+    ...members.filter((member) => !orderedIds.has(member.id))
+  ];
+}
+
 function defaultItemForm(dayId: string): ItemFormState {
   return {
     dayId,
@@ -169,6 +242,17 @@ export function ItineraryPage({
   const [deletingTripId, setDeletingTripId] = useState<string | null>(null);
   const [pendingDeleteTrip, setPendingDeleteTrip] =
     useState<TripGroupSummary | null>(null);
+  const [pendingLeaveTrip, setPendingLeaveTrip] =
+    useState<TripGroupSummary | null>(null);
+  const [blockedTripLeave, setBlockedTripLeave] =
+    useState<BlockedTripLeaveState | null>(null);
+  const [leavingTripId, setLeavingTripId] = useState<string | null>(null);
+  const [editingTripMember, setEditingTripMember] =
+    useState<EditingTripMemberState | null>(null);
+  const [tripMemberNickname, setTripMemberNickname] = useState("");
+  const [tripMemberNicknameError, setTripMemberNicknameError] = useState("");
+  const [isSavingTripMemberNickname, setIsSavingTripMemberNickname] =
+    useState(false);
   const [pendingConfirmFinalVersionId, setPendingConfirmFinalVersionId] =
     useState<string | null>(null);
   const [aiActionState, setAiActionState] = useState<AiActionState | null>(null);
@@ -464,6 +548,146 @@ export function ItineraryPage({
     }
   }
 
+  function openTripMemberNicknameEditor(group: TripGroupSummary, member: TripMember) {
+    setEditingTripMember({ group, member });
+    setTripMemberNickname(member.displayName);
+    setTripMemberNicknameError("");
+  }
+
+  async function submitTripMemberNickname(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingTripMember || !auth.user) {
+      return;
+    }
+
+    const nextDisplayName = tripMemberNickname.trim();
+
+    if (!nextDisplayName || nextDisplayName.length > 24) {
+      setTripMemberNicknameError("行程昵称长度需要在 1-24 位之间。");
+      return;
+    }
+
+    setIsSavingTripMemberNickname(true);
+    setTripMemberNicknameError("");
+
+    try {
+      const tripData = await loadTripData(editingTripMember.group.id);
+      const currentTripMember = currentUserMemberInTripData(tripData, auth.user);
+
+      if (!currentTripMember) {
+        setTripMemberNicknameError("你不是这个行程的成员。");
+        return;
+      }
+
+      if (memberDisplayNameExists(tripData.members, nextDisplayName, currentTripMember.id)) {
+        setTripMemberNicknameError("这个昵称在当前行程里已经有人用了，请换一个。");
+        return;
+      }
+
+      if (currentTripMember.displayName === nextDisplayName) {
+        setEditingTripMember(null);
+        return;
+      }
+
+      const nextData = renameTripMemberInTrip(
+        tripData,
+        currentTripMember.id,
+        nextDisplayName
+      );
+
+      await saveTripDataStrict(nextData);
+      notifySavedTripData(nextData);
+      await refreshTripGroups();
+      setEditingTripMember(null);
+    } catch (error) {
+      setTripMemberNicknameError(
+        error instanceof Error ? error.message : "暂时无法保存行程昵称。"
+      );
+    } finally {
+      setIsSavingTripMemberNickname(false);
+    }
+  }
+
+  function requestLeaveTripGroup(group: TripGroupSummary) {
+    if (!auth.user) {
+      return;
+    }
+
+    const currentTripMember = currentUserMemberForGroup(group, auth.user);
+
+    if (!currentTripMember || currentTripMember.role === "owner") {
+      return;
+    }
+
+    if (group.contributingMemberIds?.includes(currentTripMember.id)) {
+      setBlockedTripLeave({
+        group,
+        message:
+          "你已经在这个行程里添加或参与过内容。为了不影响行程继续推进，现在不能退出。"
+      });
+      return;
+    }
+
+    setPendingLeaveTrip(group);
+  }
+
+  async function confirmLeaveTripGroup() {
+    if (!pendingLeaveTrip || !auth.user) {
+      return;
+    }
+
+    setLeavingTripId(pendingLeaveTrip.id);
+
+    try {
+      const tripData = await loadTripData(pendingLeaveTrip.id);
+      const currentTripMember = currentUserMemberInTripData(tripData, auth.user);
+
+      if (!currentTripMember || currentTripMember.role === "owner") {
+        setPendingLeaveTrip(null);
+        return;
+      }
+
+      if (memberHasTripContributions(tripData, currentTripMember.id)) {
+        setPendingLeaveTrip(null);
+        setBlockedTripLeave({
+          group: pendingLeaveTrip,
+          message:
+            "你已经在这个行程里添加或参与过内容。为了不影响行程继续推进，现在不能退出。"
+        });
+        return;
+      }
+
+      const nextData = removeTripMemberFromTrip(tripData, currentTripMember.id);
+
+      await saveTripDataStrict(nextData);
+      notifySavedTripData(nextData);
+      const groups = await listTripGroups(tripId);
+
+      setTripGroups(groups);
+      writeCachedTripGroups(auth.user.id, groups);
+
+      if (selectedTripId === pendingLeaveTrip.id) {
+        setSelectedTripId(null);
+      }
+
+      if (pendingLeaveTrip.id === tripId && groups[0]?.id) {
+        router.replace(`/trip/${groups[0].id}/itinerary`);
+      }
+
+      setPendingLeaveTrip(null);
+    } catch (error) {
+      setPendingLeaveTrip(null);
+      setBlockedTripLeave({
+        group: pendingLeaveTrip,
+        message:
+          error instanceof Error ? error.message : "暂时无法退出这个行程。"
+      });
+    } finally {
+      setLeavingTripId(null);
+    }
+  }
+
   function updateItemForm<K extends keyof ItemFormState>(
     key: K,
     value: ItemFormState[K]
@@ -558,7 +782,10 @@ export function ItineraryPage({
           onOpenTrip={openTripGroup}
           onCreateTrip={openNewTripModal}
           onDeleteTrip={setPendingDeleteTrip}
+          onLeaveTrip={requestLeaveTripGroup}
+          onEditTripMemberNickname={openTripMemberNicknameEditor}
           deletingTripId={deletingTripId}
+          leavingTripId={leavingTripId}
         />
       ) : !isLoaded ? (
         <TripDetailLoading onBack={backToTripGroups} />
@@ -831,6 +1058,73 @@ export function ItineraryPage({
         onConfirm={() => void confirmDeleteTripGroup()}
       />
 
+      <LeaveTripConfirmModal
+        trip={pendingLeaveTrip}
+        isLeaving={Boolean(
+          pendingLeaveTrip && leavingTripId === pendingLeaveTrip.id
+        )}
+        onClose={() => {
+          if (!leavingTripId) {
+            setPendingLeaveTrip(null);
+          }
+        }}
+        onConfirm={() => void confirmLeaveTripGroup()}
+      />
+
+      <BlockedTripLeaveModal
+        state={blockedTripLeave}
+        onClose={() => setBlockedTripLeave(null)}
+      />
+
+      <Modal
+        open={Boolean(editingTripMember)}
+        title="修改行程昵称"
+        description={editingTripMember?.group.name ?? ""}
+        onClose={() => {
+          if (!isSavingTripMemberNickname) {
+            setEditingTripMember(null);
+          }
+        }}
+      >
+        <form className="grid gap-3" onSubmit={submitTripMemberNickname}>
+          <input
+            className="field-control"
+            autoComplete="nickname"
+            maxLength={24}
+            placeholder="这个行程里的昵称"
+            value={tripMemberNickname}
+            onChange={(event) => {
+              setTripMemberNickname(event.target.value);
+              setTripMemberNicknameError("");
+            }}
+          />
+          {tripMemberNicknameError ? (
+            <p className="text-sm leading-6 text-coral">
+              {tripMemberNicknameError}
+            </p>
+          ) : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSavingTripMemberNickname}
+              onClick={() => setEditingTripMember(null)}
+            >
+              取消
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                isSavingTripMemberNickname || !tripMemberNickname.trim()
+              }
+              isLoading={isSavingTripMemberNickname}
+            >
+              保存昵称
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       <Modal
         open={showNewTripModal}
         title="发起行程"
@@ -1043,6 +1337,80 @@ function DeleteTripConfirmModal({
   );
 }
 
+function LeaveTripConfirmModal({
+  trip,
+  isLeaving,
+  onClose,
+  onConfirm
+}: {
+  trip: TripGroupSummary | null;
+  isLeaving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      open={Boolean(trip)}
+      title="退出行程"
+      description={trip?.name ?? ""}
+      onClose={onClose}
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[1rem] border border-sunset/20 bg-secondary p-4 text-sm leading-6 text-muted-foreground">
+          退出后，这个行程不会再出现在你的行程列表里。只有还没有添加或参与过内容的成员可以退出。
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isLeaving}
+            onClick={onClose}
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            disabled={isLeaving}
+            isLoading={isLeaving}
+            onClick={onConfirm}
+          >
+            {!isLeaving ? (
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            ) : null}
+            {isLeaving ? "退出中" : "确认退出"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function BlockedTripLeaveModal({
+  state,
+  onClose
+}: {
+  state: BlockedTripLeaveState | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open={Boolean(state)}
+      title="暂时不能退出"
+      description={state?.group.name ?? ""}
+      onClose={onClose}
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[1rem] border border-sunset/20 bg-secondary p-4 text-sm leading-6 text-muted-foreground">
+          {state?.message}
+        </div>
+        <Button type="button" onClick={onClose}>
+          知道了
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 function TripGroupList({
   tripGroups,
   currentUser,
@@ -1051,7 +1419,10 @@ function TripGroupList({
   onOpenTrip,
   onCreateTrip,
   onDeleteTrip,
-  deletingTripId
+  onLeaveTrip,
+  onEditTripMemberNickname,
+  deletingTripId,
+  leavingTripId
 }: {
   tripGroups: TripGroupSummary[];
   currentUser: AuthUser | null;
@@ -1060,7 +1431,10 @@ function TripGroupList({
   onOpenTrip: (tripId: string) => void;
   onCreateTrip: () => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
+  onLeaveTrip: (group: TripGroupSummary) => void;
+  onEditTripMemberNickname: (group: TripGroupSummary, member: TripMember) => void;
   deletingTripId: string | null;
+  leavingTripId: string | null;
 }) {
   const managedGroups = useMemo(
     () =>
@@ -1098,18 +1472,28 @@ function TripGroupList({
             groups={managedGroups}
             emptyText="暂时没有你管理的行程。"
             canDelete
+            canLeave={false}
+            currentUser={currentUser}
             onOpenTrip={onOpenTrip}
             onDeleteTrip={onDeleteTrip}
+            onLeaveTrip={onLeaveTrip}
+            onEditTripMemberNickname={onEditTripMemberNickname}
             deletingTripId={deletingTripId}
+            leavingTripId={leavingTripId}
           />
           <TripGroupSection
             title="我加入的行程"
             groups={joinedGroups}
             emptyText="暂时没有你加入的行程。"
             canDelete={false}
+            canLeave
+            currentUser={currentUser}
             onOpenTrip={onOpenTrip}
             onDeleteTrip={onDeleteTrip}
+            onLeaveTrip={onLeaveTrip}
+            onEditTripMemberNickname={onEditTripMemberNickname}
             deletingTripId={deletingTripId}
+            leavingTripId={leavingTripId}
           />
         </>
       )}
@@ -1153,17 +1537,27 @@ function TripGroupSection({
   groups,
   emptyText,
   canDelete,
+  canLeave,
+  currentUser,
   onOpenTrip,
   onDeleteTrip,
-  deletingTripId
+  onLeaveTrip,
+  onEditTripMemberNickname,
+  deletingTripId,
+  leavingTripId
 }: {
   title: string;
   groups: TripGroupSummary[];
   emptyText: string;
   canDelete: boolean;
+  canLeave: boolean;
+  currentUser: AuthUser | null;
   onOpenTrip: (tripId: string) => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
+  onLeaveTrip: (group: TripGroupSummary) => void;
+  onEditTripMemberNickname: (group: TripGroupSummary, member: TripMember) => void;
   deletingTripId: string | null;
+  leavingTripId: string | null;
 }) {
   return (
     <section className="grid gap-3">
@@ -1176,9 +1570,14 @@ function TripGroupSection({
           key={group.id}
           group={group}
           canDelete={canDelete}
+          canLeave={canLeave}
+          currentUser={currentUser}
           onOpenTrip={onOpenTrip}
           onDeleteTrip={onDeleteTrip}
+          onLeaveTrip={onLeaveTrip}
+          onEditTripMemberNickname={onEditTripMemberNickname}
           isDeleting={deletingTripId === group.id}
+          isLeaving={leavingTripId === group.id}
         />
       ))}
       {groups.length === 0 ? (
@@ -1278,16 +1677,28 @@ function HotelLocationLine({
 function TripGroupCard({
   group,
   canDelete,
+  canLeave,
+  currentUser,
   onOpenTrip,
   onDeleteTrip,
-  isDeleting
+  onLeaveTrip,
+  onEditTripMemberNickname,
+  isDeleting,
+  isLeaving
 }: {
   group: TripGroupSummary;
   canDelete: boolean;
+  canLeave: boolean;
+  currentUser: AuthUser | null;
   onOpenTrip: (tripId: string) => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
+  onLeaveTrip: (group: TripGroupSummary) => void;
+  onEditTripMemberNickname: (group: TripGroupSummary, member: TripMember) => void;
   isDeleting: boolean;
+  isLeaving: boolean;
 }) {
+  const currentTripMember = currentUserMemberForGroup(group, currentUser);
+
   return (
     <article className="corner-mark surface-card">
       <div className="flex items-start justify-between gap-3">
@@ -1306,7 +1717,13 @@ function TripGroupCard({
         <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
         <SmallStat label="地点" value={`${group.placeCount}`} />
       </div>
-      <MemberList members={group.members ?? []} />
+      <MemberList
+        members={group.members ?? []}
+        currentMemberId={currentTripMember?.id}
+        onEditCurrentMember={(member) =>
+          onEditTripMemberNickname(group, member)
+        }
+      />
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button type="button" onClick={() => onOpenTrip(group.id)}>
@@ -1328,6 +1745,20 @@ function TripGroupCard({
               <Trash2 className="h-4 w-4" aria-hidden="true" />
             ) : null}
             {isDeleting ? "删除中" : "删除"}
+          </Button>
+        ) : null}
+        {canLeave && currentTripMember?.role === "member" ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onLeaveTrip(group)}
+            disabled={isLeaving}
+            isLoading={isLeaving}
+          >
+            {!isLeaving ? (
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            ) : null}
+            {isLeaving ? "退出中" : "退出行程"}
           </Button>
         ) : null}
       </div>
@@ -2443,18 +2874,71 @@ function SmallStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MemberList({ members }: { members: TripMember[] }) {
+function MemberList({
+  members,
+  currentMemberId,
+  onEditCurrentMember
+}: {
+  members: TripMember[];
+  currentMemberId?: string;
+  onEditCurrentMember?: (member: TripMember) => void;
+}) {
+  const orderedMembers = orderedMembersForGroup(members, currentMemberId);
+
   return (
     <div className="mt-3 flex flex-wrap gap-2">
-      {members.map((member) => (
-        <span
-          key={member.id}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/45 px-2.5 py-1 text-xs font-medium text-muted-foreground"
-        >
-          <UsersRound className="h-3.5 w-3.5 text-teal" aria-hidden="true" />
-          {member.displayName}
-        </span>
-      ))}
+      {orderedMembers.map((member) => {
+        const isOwner = member.role === "owner";
+        const isCurrentMember = member.id === currentMemberId;
+        const content = (
+          <>
+            <UsersRound
+              className={cn(
+                "h-3.5 w-3.5",
+                isOwner
+                  ? "text-primary-foreground"
+                  : isCurrentMember
+                    ? "text-teal"
+                    : "text-muted-foreground"
+              )}
+              aria-hidden="true"
+            />
+            <span>{member.displayName}</span>
+            {isOwner ? (
+              <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">
+                管理者
+              </span>
+            ) : null}
+          </>
+        );
+        const className = cn(
+          "inline-flex min-h-7 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition",
+          isOwner
+            ? "border-primary/20 bg-primary text-primary-foreground shadow-[0_8px_18px_rgba(242,99,76,0.16)]"
+            : isCurrentMember
+              ? "border-teal/20 bg-accent text-accent-foreground hover:bg-accent/80"
+              : "border-border bg-muted/45 text-muted-foreground"
+        );
+
+        if (isCurrentMember && onEditCurrentMember) {
+          return (
+            <button
+              key={member.id}
+              type="button"
+              className={cn("focus-ring", className)}
+              onClick={() => onEditCurrentMember(member)}
+            >
+              {content}
+            </button>
+          );
+        }
+
+        return (
+          <span key={member.id} className={className}>
+            {content}
+          </span>
+        );
+      })}
     </div>
   );
 }

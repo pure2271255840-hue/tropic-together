@@ -9,7 +9,7 @@ import type { TripMember, TripPhase1Data } from "@/features/trip/types";
 
 export const runtime = "nodejs";
 
-const memberColors: TripMember["color"][] = ["teal", "coral", "sunset", "leaf"];
+const memberColors: TripMember["color"][] = ["coral", "sunset", "leaf"];
 
 function inviteCodeForTrip(data: TripPhase1Data) {
   if (data.trip.inviteCode) {

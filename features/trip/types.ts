@@ -147,6 +147,7 @@ export type TripGroupSummary = {
   inviteCode?: string;
   inviteUrl: string;
   members: TripMember[];
+  contributingMemberIds?: string[];
   placeCount: number;
   updatedAt: string;
 };

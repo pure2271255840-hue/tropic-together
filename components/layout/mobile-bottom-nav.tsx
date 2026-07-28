@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { CalendarDays, Home, MapPin, UserRound } from "lucide-react";
 import { usePendingItineraryTripCount } from "@/features/trip/use-pending-itinerary-trip-count";
 import { usePendingPlaceVoteCount } from "@/features/trip/use-pending-place-vote-count";
+import { usePrefetchTripTabs } from "@/features/trip/use-prefetch-trip-tabs";
 import { cn } from "@/lib/utils";
 
 function tripInfoFromPath(pathname: string) {
@@ -22,6 +23,8 @@ function tripInfoFromPath(pathname: string) {
 export function MobileBottomNav() {
   const pathname = usePathname();
   const { tripId, tripBase } = tripInfoFromPath(pathname);
+  usePrefetchTripTabs(tripBase);
+
   const pendingItineraryCount = usePendingItineraryTripCount(tripId);
   const pendingPlaceVoteCount = usePendingPlaceVoteCount(tripId);
   const navItems = [

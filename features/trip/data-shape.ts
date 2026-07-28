@@ -1,4 +1,5 @@
 import type { TripGroupSummary, TripPhase1Data } from "./types";
+import { contributingMemberIdsForTrip } from "./member-actions";
 
 export function cloneData(data: TripPhase1Data): TripPhase1Data {
   return JSON.parse(JSON.stringify(data)) as TripPhase1Data;
@@ -40,6 +41,7 @@ export function summarizeTripGroup(data: TripPhase1Data): TripGroupSummary {
     inviteCode: currentData.trip.inviteCode,
     inviteUrl: currentData.trip.inviteUrl,
     members: currentData.members,
+    contributingMemberIds: contributingMemberIdsForTrip(currentData),
     placeCount: currentData.places.length,
     updatedAt: currentData.updatedAt
   };
