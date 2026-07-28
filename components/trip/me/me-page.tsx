@@ -78,9 +78,12 @@ export function MePage({ tripId }: MePageProps) {
                 variant="outline"
                 onClick={auth.logout}
                 disabled={auth.isSubmitting}
+                isLoading={auth.isSubmitting}
               >
-                <LogOut className="h-4 w-4" aria-hidden="true" />
-                退出
+                {!auth.isSubmitting ? (
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                ) : null}
+                {auth.isSubmitting ? "退出中" : "退出"}
               </Button>
             </div>
           </section>
@@ -113,9 +116,12 @@ export function MePage({ tripId }: MePageProps) {
               <Button
                 type="submit"
                 disabled={!inviteCode.trim() || isJoining}
+                isLoading={isJoining}
               >
-                <UsersRound className="h-4 w-4" aria-hidden="true" />
-                加入行程
+                {!isJoining ? (
+                  <UsersRound className="h-4 w-4" aria-hidden="true" />
+                ) : null}
+                {isJoining ? "加入中" : "加入行程"}
               </Button>
             </form>
           </section>

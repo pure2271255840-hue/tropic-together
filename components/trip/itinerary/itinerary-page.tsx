@@ -9,7 +9,6 @@ import {
   Copy,
   ExternalLink,
   House,
-  Loader2,
   MapPin,
   MoreHorizontal,
   Pencil,
@@ -149,6 +148,8 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const [showManageItineraryModal, setShowManageItineraryModal] = useState(false);
   const [showNewTripModal, setShowNewTripModal] = useState(false);
   const [showTripSettingsModal, setShowTripSettingsModal] = useState(false);
+  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
+  const [deletingTripId, setDeletingTripId] = useState<string | null>(null);
   const [aiActionState, setAiActionState] = useState<AiActionState | null>(null);
   const [aiDraftPreview, setAiDraftPreview] =
     useState<AiDraftPreviewState | null>(null);
@@ -345,48 +346,54 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       return;
     }
 
-    const slug = `${newTripForm.name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-")
-      .replace(/^-|-$/g, "") || "trip"}-${Date.now().toString(36)}`;
-    const nextData = createSeedTripData(slug);
-    const ownerMember: TripMember = {
-      id: `member-${auth.user.id}`,
-      appUserId: auth.user.id,
-      displayName: auth.user.username,
-      role: "owner",
-      color: "teal"
-    };
+    setIsCreatingTrip(true);
 
-    nextData.trip.name = newTripForm.name.trim();
-    nextData.trip.subtitle = "新的行程，先收集地点，再生成行程草稿。";
-    nextData.trip.ownerMemberId = ownerMember.id;
-    nextData.trip.startDate = newTripForm.startDate;
-    nextData.trip.endDate = newTripForm.endDate;
-    nextData.trip.phase = "collecting_places";
-    nextData.trip.inviteCode = createInviteCode();
-    nextData.trip.inviteUrl = invitePath(nextData.trip.inviteCode);
-    const hotelLocation = locationInputParts(newTripForm.hotelLocation);
-    nextData.trip.hotelAddress = hotelLocation.address || undefined;
-    nextData.trip.hotelMapUrl = hotelLocation.mapUrl;
-    nextData.places = [];
-    nextData.placeVotes = [];
-    nextData.members = [ownerMember];
-    nextData.currentMemberId = ownerMember.id;
-    nextData.itineraryVersions = [];
-    nextData.currentItineraryVersionId = "";
-    nextData.itineraryVotes = [];
-    nextData.updatedAt = new Date().toISOString();
+    try {
+      const slug = `${newTripForm.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-")
+        .replace(/^-|-$/g, "") || "trip"}-${Date.now().toString(36)}`;
+      const nextData = createSeedTripData(slug);
+      const ownerMember: TripMember = {
+        id: `member-${auth.user.id}`,
+        appUserId: auth.user.id,
+        displayName: auth.user.username,
+        role: "owner",
+        color: "teal"
+      };
 
-    await saveTripData(nextData);
-    setActiveTripMemberId(slug, ownerMember.id);
-    const groups = await listTripGroups(tripId);
+      nextData.trip.name = newTripForm.name.trim();
+      nextData.trip.subtitle = "新的行程，先收集地点，再生成行程草稿。";
+      nextData.trip.ownerMemberId = ownerMember.id;
+      nextData.trip.startDate = newTripForm.startDate;
+      nextData.trip.endDate = newTripForm.endDate;
+      nextData.trip.phase = "collecting_places";
+      nextData.trip.inviteCode = createInviteCode();
+      nextData.trip.inviteUrl = invitePath(nextData.trip.inviteCode);
+      const hotelLocation = locationInputParts(newTripForm.hotelLocation);
+      nextData.trip.hotelAddress = hotelLocation.address || undefined;
+      nextData.trip.hotelMapUrl = hotelLocation.mapUrl;
+      nextData.places = [];
+      nextData.placeVotes = [];
+      nextData.members = [ownerMember];
+      nextData.currentMemberId = ownerMember.id;
+      nextData.itineraryVersions = [];
+      nextData.currentItineraryVersionId = "";
+      nextData.itineraryVotes = [];
+      nextData.updatedAt = new Date().toISOString();
 
-    setTripGroups(groups);
-    writeCachedTripGroups(auth.user.id, groups);
-    setSelectedTripId(slug);
-    setShowNewTripModal(false);
+      await saveTripData(nextData);
+      setActiveTripMemberId(slug, ownerMember.id);
+      const groups = await listTripGroups(tripId);
+
+      setTripGroups(groups);
+      writeCachedTripGroups(auth.user.id, groups);
+      setSelectedTripId(slug);
+      setShowNewTripModal(false);
+    } finally {
+      setIsCreatingTrip(false);
+    }
   }
 
   async function deleteTripGroup(group: TripGroupSummary) {
@@ -394,12 +401,18 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       return;
     }
 
-    await deleteTripData(group.id);
-    setTripGroups((current) => current.filter((item) => item.id !== group.id));
-    void refreshTripGroups();
+    setDeletingTripId(group.id);
 
-    if (selectedTripId === group.id) {
-      setSelectedTripId(null);
+    try {
+      await deleteTripData(group.id);
+      setTripGroups((current) => current.filter((item) => item.id !== group.id));
+      void refreshTripGroups();
+
+      if (selectedTripId === group.id) {
+        setSelectedTripId(null);
+      }
+    } finally {
+      setDeletingTripId(null);
     }
   }
 
@@ -493,6 +506,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           onOpenTrip={openTripGroup}
           onCreateTrip={openNewTripModal}
           onDeleteTrip={deleteTripGroup}
+          deletingTripId={deletingTripId}
         />
       ) : !isLoaded ? (
         <TripDetailLoading onBack={backToTripGroups} />
@@ -770,12 +784,14 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           <Button
             type="submit"
             disabled={
+              isCreatingTrip ||
               !newTripForm.name.trim() ||
               !newTripForm.startDate ||
               !newTripForm.endDate
             }
+            isLoading={isCreatingTrip}
           >
-            创建并进入行程
+            {isCreatingTrip ? "创建中" : "创建并进入行程"}
           </Button>
         </form>
       </Modal>
@@ -869,7 +885,8 @@ function TripGroupList({
   isTripGroupsLoading,
   onOpenTrip,
   onCreateTrip,
-  onDeleteTrip
+  onDeleteTrip,
+  deletingTripId
 }: {
   tripGroups: TripGroupSummary[];
   currentUser: AuthUser | null;
@@ -878,6 +895,7 @@ function TripGroupList({
   onOpenTrip: (tripId: string) => void;
   onCreateTrip: () => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
+  deletingTripId: string | null;
 }) {
   const managedGroups = useMemo(
     () =>
@@ -917,6 +935,7 @@ function TripGroupList({
             canDelete
             onOpenTrip={onOpenTrip}
             onDeleteTrip={onDeleteTrip}
+            deletingTripId={deletingTripId}
           />
           <TripGroupSection
             title="我加入的行程"
@@ -925,6 +944,7 @@ function TripGroupList({
             canDelete={false}
             onOpenTrip={onOpenTrip}
             onDeleteTrip={onDeleteTrip}
+            deletingTripId={deletingTripId}
           />
         </>
       )}
@@ -969,7 +989,8 @@ function TripGroupSection({
   emptyText,
   canDelete,
   onOpenTrip,
-  onDeleteTrip
+  onDeleteTrip,
+  deletingTripId
 }: {
   title: string;
   groups: TripGroupSummary[];
@@ -977,6 +998,7 @@ function TripGroupSection({
   canDelete: boolean;
   onOpenTrip: (tripId: string) => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
+  deletingTripId: string | null;
 }) {
   return (
     <section className="grid gap-3">
@@ -991,6 +1013,7 @@ function TripGroupSection({
           canDelete={canDelete}
           onOpenTrip={onOpenTrip}
           onDeleteTrip={onDeleteTrip}
+          isDeleting={deletingTripId === group.id}
         />
       ))}
       {groups.length === 0 ? (
@@ -1083,12 +1106,14 @@ function TripGroupCard({
   group,
   canDelete,
   onOpenTrip,
-  onDeleteTrip
+  onDeleteTrip,
+  isDeleting
 }: {
   group: TripGroupSummary;
   canDelete: boolean;
   onOpenTrip: (tripId: string) => void;
   onDeleteTrip: (group: TripGroupSummary) => void;
+  isDeleting: boolean;
 }) {
   return (
     <article className="corner-mark surface-card">
@@ -1120,9 +1145,13 @@ function TripGroupCard({
             type="button"
             variant="outline"
             onClick={() => onDeleteTrip(group)}
+            disabled={isDeleting}
+            isLoading={isDeleting}
           >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-            删除
+            {!isDeleting ? (
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            ) : null}
+            {isDeleting ? "删除中" : "删除"}
           </Button>
         ) : null}
       </div>
@@ -1227,13 +1256,12 @@ function TripGroupWorkspace({
               type="button"
               className="mt-4"
               disabled={isGeneratingWithAi}
+              isLoading={isGeneratingWithAi}
               onClick={onGenerateAi}
             >
-              {isGeneratingWithAi ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
+              {!isGeneratingWithAi ? (
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
-              )}
+              ) : null}
               {isGeneratingWithAi ? "生成中" : "生成 AI 草稿"}
             </Button>
           ) : (
@@ -1419,13 +1447,12 @@ function ItineraryDetail({
               variant="outline"
               className="rounded-full"
               disabled={isOrganizingWithAi}
+              isLoading={isOrganizingWithAi}
               onClick={onOrganizeWithAi}
             >
-              {isOrganizingWithAi ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
+              {!isOrganizingWithAi ? (
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
-              )}
+              ) : null}
               {isOrganizingWithAi ? "整理中" : "AI 整理行程"}
             </Button>
             <Button

@@ -87,13 +87,21 @@ export function AuthCard({
         <Button
           type="submit"
           disabled={!username.trim() || !password || isSubmitting}
+          isLoading={isSubmitting}
         >
-          {mode === "login" ? (
+          {!isSubmitting && mode === "login" ? (
             <LogIn className="h-4 w-4" aria-hidden="true" />
-          ) : (
+          ) : null}
+          {!isSubmitting && mode === "register" ? (
             <UserPlus className="h-4 w-4" aria-hidden="true" />
-          )}
-          {mode === "login" ? "登录" : "创建账号"}
+          ) : null}
+          {isSubmitting
+            ? mode === "login"
+              ? "登录中"
+              : "创建中"
+            : mode === "login"
+              ? "登录"
+              : "创建账号"}
         </Button>
       </form>
     </section>

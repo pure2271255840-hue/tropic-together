@@ -38,9 +38,6 @@ export function AuthGate({ children }: AuthGateProps) {
                 </p>
               </div>
             </div>
-            <p className="mt-4 rounded-lg border border-border bg-muted/55 px-3 py-2 text-sm leading-6 text-muted-foreground">
-              测试账号：noah / 123456
-            </p>
           </section>
           <AuthCard
             error={auth.error}

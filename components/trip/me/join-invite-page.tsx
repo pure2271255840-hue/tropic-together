@@ -84,9 +84,11 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
                 {joinError}
               </p>
             ) : null}
-            <Button type="submit" disabled={isJoining}>
-              <UsersRound className="h-4 w-4" aria-hidden="true" />
-              加入行程
+            <Button type="submit" disabled={isJoining} isLoading={isJoining}>
+              {!isJoining ? (
+                <UsersRound className="h-4 w-4" aria-hidden="true" />
+              ) : null}
+              {isJoining ? "加入中" : "加入行程"}
             </Button>
           </form>
         </section>

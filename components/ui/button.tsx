@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const variants = {
@@ -22,21 +23,40 @@ const sizes = {
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: keyof typeof variants;
   size?: keyof typeof sizes;
+  isLoading?: boolean;
 };
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "default", size = "default", ...props }, ref) => {
+  (
+    {
+      children,
+      className,
+      disabled,
+      isLoading = false,
+      variant = "default",
+      size = "default",
+      ...props
+    },
+    ref
+  ) => {
     return (
       <button
         ref={ref}
+        aria-busy={isLoading || undefined}
         className={cn(
           "focus-ring inline-flex items-center justify-center gap-2 rounded-lg font-medium transition disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45",
           variants[variant],
           sizes[size],
           className
         )}
+        disabled={disabled || isLoading}
         {...props}
-      />
+      >
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+        ) : null}
+        {children}
+      </button>
     );
   }
 );
