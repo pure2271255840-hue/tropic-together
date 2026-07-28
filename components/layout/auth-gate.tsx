@@ -44,6 +44,7 @@ export function AuthGate({ children }: AuthGateProps) {
             isSubmitting={auth.isSubmitting}
             onLogin={auth.login}
             onRegister={auth.register}
+            onResetPassword={auth.resetPassword}
           />
         </div>
       </main>

@@ -27,6 +27,7 @@ type AuthSessionContextValue = {
     password: string,
     displayName: string
   ) => Promise<AuthUser | null>;
+  resetPassword: (username: string, password: string) => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -118,6 +119,25 @@ function useAuthSessionState(): AuthSessionContextValue {
     [runAuthAction]
   );
 
+  const resetPassword = useCallback(async (username: string, password: string) => {
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      await parseAuthResponse(
+        await fetch("/api/auth/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        })
+      );
+    } catch (nextError) {
+      throw nextError;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
   const updateDisplayName = useCallback(async (displayName: string) => {
     setError("");
 
@@ -165,6 +185,7 @@ function useAuthSessionState(): AuthSessionContextValue {
       error,
       login,
       register,
+      resetPassword,
       updateDisplayName,
       logout,
       refresh
@@ -177,6 +198,7 @@ function useAuthSessionState(): AuthSessionContextValue {
       logout,
       refresh,
       register,
+      resetPassword,
       updateDisplayName,
       user
     ]

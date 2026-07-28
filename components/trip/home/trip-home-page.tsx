@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ExternalLink,
@@ -12,9 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import {
-  appleMapsDirectionsUrl,
-  googleMapsDirectionsUrl
-} from "@/features/trip/navigation-links";
+  routePlanForItineraryDay,
+  type ItineraryRoutePlan
+} from "@/features/trip/itinerary-routes";
 import {
   readCachedTripGroups,
   writeCachedTripGroups
@@ -22,7 +22,7 @@ import {
 import { listTripGroups, loadTripData } from "@/features/trip/trip-storage";
 import { formatDateLabel, planPhaseLabels } from "@/features/trip/trip-labels";
 import type {
-  ItineraryItem,
+  ItineraryDay,
   ItineraryVersion,
   TravelPlace,
   TripMember,
@@ -32,12 +32,6 @@ import { cn } from "@/lib/utils";
 
 type TripHomePageProps = {
   tripId: string;
-};
-
-type HomeItineraryItem = {
-  dayDate: string;
-  item: ItineraryItem;
-  place?: TravelPlace;
 };
 
 export function TripHomePage({ tripId }: TripHomePageProps) {
@@ -97,14 +91,23 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
   const confirmedVersion = confirmedTrip
     ? getConfirmedVersion(confirmedTrip)
     : undefined;
-  const nextPlan =
+  const confirmedPlaceById = useMemo(
+    () => new Map(confirmedTrip?.places.map((place) => [place.id, place]) ?? []),
+    [confirmedTrip]
+  );
+  const nextDay =
     confirmedTrip && confirmedVersion
-      ? findNextVersionItem(
-          confirmedVersion,
-          confirmedTrip.places,
-          confirmedTrip.trip.timezone
-        )
+      ? findNextVersionDay(confirmedVersion, confirmedTrip.trip.timezone)
       : undefined;
+  const nextDayRoutePlan =
+    confirmedTrip && nextDay
+      ? routePlanForItineraryDay(
+          nextDay,
+          confirmedPlaceById,
+          confirmedTrip.trip.hotelAddress,
+          confirmedTrip.trip.hotelMapUrl
+        )
+      : null;
 
   return (
     <main className="page-shell">
@@ -158,7 +161,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         <section className="surface-card-muted text-center">
           <p className="text-base font-semibold">还没有已确认的行程</p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            首页只展示已确认且时间最近的行程。去行程页确认最终版后，这里会显示它的下一段活动。
+            首页只展示已确认且时间最近的行程。去行程页确认最终版后，这里会显示下一天行程。
           </p>
           <Link
             className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.22)] transition hover:bg-primary/90"
@@ -169,40 +172,12 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         </section>
       )}
 
-      {!isLoadingTrips ? (
-      <section className="corner-mark rounded-[1.25rem] border border-primary/15 bg-secondary/70 p-5 text-foreground shadow-soft">
-        <div className="flex gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-white text-primary">
-            <Navigation className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted-foreground">下一个即将执行的行程</p>
-            <h2 className="mt-1 text-lg font-semibold">
-              {nextPlan?.item.title ?? "暂无下一段行程"}
-            </h2>
-            {nextPlan ? (
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {formatDateLabel(nextPlan.dayDate)} {nextPlan.item.startTime || "--:--"} - {nextPlan.item.endTime || "--:--"}
-                {nextPlan.place ? ` / ${nextPlan.place.name}` : ""}
-              </p>
-            ) : null}
-          </div>
-        </div>
-        {nextPlan?.place ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <ExternalNavLink
-              href={appleMapsDirectionsUrl(nextPlan.place)}
-              label="Apple 导航"
-              inverse
-            />
-            <ExternalNavLink
-              href={googleMapsDirectionsUrl(nextPlan.place)}
-              label="Google 导航"
-              inverse
-            />
-          </div>
-        ) : null}
-      </section>
+      {!isLoadingTrips && confirmedTrip ? (
+        <NextDayItineraryCard
+          day={nextDay}
+          placeById={confirmedPlaceById}
+          routePlan={nextDayRoutePlan}
+        />
       ) : null}
 
     </main>
@@ -224,6 +199,72 @@ function HomeLoadingState() {
         <Skeleton className="h-10 w-28" />
         <Skeleton className="h-10 w-20" />
       </div>
+    </section>
+  );
+}
+
+function NextDayItineraryCard({
+  day,
+  placeById,
+  routePlan
+}: {
+  day?: ItineraryDay;
+  placeById: Map<string, TravelPlace>;
+  routePlan: ItineraryRoutePlan | null;
+}) {
+  return (
+    <section className="corner-mark rounded-[1.25rem] border border-primary/15 bg-secondary/70 p-5 text-foreground shadow-soft">
+      <div className="flex gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-white text-primary">
+          <Navigation className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-muted-foreground">下一天即将执行的行程</p>
+          <h2 className="mt-1 text-lg font-semibold">
+            {day ? `${formatDateLabel(day.date)} / ${day.title}` : "暂无下一天行程"}
+          </h2>
+          {day ? (
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {[day.city, day.summary].filter(Boolean).join(" / ")}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {routePlan ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <ExternalNavLink href={routePlan.href} label={routePlan.label} inverse />
+        </div>
+      ) : null}
+
+      {day?.items.length ? (
+        <div className="mt-4 divide-y divide-primary/10 rounded-[1rem] border border-primary/10 bg-white/80">
+          {day.items.map((item) => {
+            const place = item.placeId ? placeById.get(item.placeId) : undefined;
+
+            return (
+              <div key={item.id} className="grid gap-1 px-3 py-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold leading-6">{item.title}</p>
+                  <span className="text-xs font-semibold text-primary">
+                    {item.startTime || "--:--"} - {item.endTime || "--:--"}
+                  </span>
+                </div>
+                {place ? (
+                  <p className="leading-6 text-muted-foreground">{place.name}</p>
+                ) : null}
+                {item.notes ? (
+                  <p className="leading-6 text-muted-foreground">{item.notes}</p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : day ? (
+        <div className="mt-4 rounded-lg border border-dashed border-primary/15 bg-white/70 px-3 py-4 text-sm leading-6 text-muted-foreground">
+          当天还没有活动。
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -302,11 +343,10 @@ function compareTripsByNearestTime(left: TripPhase1Data, right: TripPhase1Data) 
   return leftDelta - rightDelta;
 }
 
-function findNextVersionItem(
+function findNextVersionDay(
   version: ItineraryVersion,
-  places: TravelPlace[],
   timezone: string
-): HomeItineraryItem | undefined {
+): ItineraryDay | undefined {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(
     new Date()
   );
@@ -325,34 +365,20 @@ function findNextVersionItem(
       continue;
     }
 
-    const item =
-      day.date === today
-        ? day.items.find((candidate) => candidate.startTime >= nowTime)
-        : day.items[0];
-
-    if (item) {
-      return {
-        dayDate: day.date,
-        item,
-        place: item.placeId
-          ? places.find((place) => place.id === item.placeId)
-          : undefined
-      };
+    if (day.date === today && hasDayEnded(day, nowTime)) {
+      continue;
     }
+
+    return day;
   }
 
-  const firstItem = sortedDays.flatMap((day) =>
-    day.items.map((item) => ({ dayDate: day.date, item }))
-  )[0];
+  return undefined;
+}
 
-  if (!firstItem) {
-    return undefined;
+function hasDayEnded(day: ItineraryDay, nowTime: string) {
+  if (day.items.length === 0) {
+    return false;
   }
 
-  return {
-    ...firstItem,
-    place: firstItem.item.placeId
-      ? places.find((place) => place.id === firstItem.item.placeId)
-      : undefined
-  };
+  return day.items.every((item) => item.endTime && item.endTime < nowTime);
 }

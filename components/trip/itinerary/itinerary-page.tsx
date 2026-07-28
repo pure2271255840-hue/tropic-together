@@ -35,12 +35,15 @@ import { setActiveTripMemberId } from "@/features/trip/active-member";
 import { requestAiItineraryDraft } from "@/features/trip/ai-client";
 import type { AiTripActionMode } from "@/features/trip/ai-types";
 import {
+  hotelStopForLocation,
+  routePlanForItineraryDay,
+  routePlanForItineraryVersion,
+  type ItineraryRoutePlan
+} from "@/features/trip/itinerary-routes";
+import {
   appleMapsDirectionsUrl,
-  externalMapUrl,
   googleMapsDirectionsUrl,
-  googleMapsRouteUrl,
-  locationInputParts,
-  type MapDestination
+  locationInputParts
 } from "@/features/trip/navigation-links";
 import {
   deleteTripData,
@@ -1076,7 +1079,7 @@ function HotelLocationLine({
 }: {
   address?: string;
   mapUrl?: string;
-  routePlan?: { href: string; label: string } | null;
+  routePlan?: ItineraryRoutePlan | null;
 }) {
   const hotelStop = hotelStopForLocation(address, mapUrl);
 
@@ -1338,7 +1341,7 @@ function ItineraryDetail({
   onManageDay: (dayId: string) => void;
   onDeleteDay: (dayId: string) => void;
 }) {
-  const routePlan = routePlanForVersion(
+  const routePlan = routePlanForItineraryVersion(
     version,
     placeById,
     hotelAddress,
@@ -1496,6 +1499,8 @@ function ItineraryDetail({
       <Timeline
         version={version}
         placeById={placeById}
+        hotelAddress={hotelAddress}
+        hotelMapUrl={hotelMapUrl}
         currentMember={currentMember}
         isOwner={isOwner}
         canEdit
@@ -1533,6 +1538,8 @@ function ItineraryDetail({
 function Timeline({
   version,
   placeById,
+  hotelAddress,
+  hotelMapUrl,
   currentMember,
   isOwner,
   canEdit,
@@ -1542,6 +1549,8 @@ function Timeline({
 }: {
   version: ItineraryVersion;
   placeById: Map<string, TravelPlace>;
+  hotelAddress?: string;
+  hotelMapUrl?: string;
   currentMember: TripMember;
   isOwner: boolean;
   canEdit: boolean;
@@ -1552,25 +1561,42 @@ function Timeline({
   const [openMenuDayId, setOpenMenuDayId] = useState<string | null>(null);
 
   return (
-    <section className="surface-card">
-      <div className="space-y-6">
-        {version.days.map((day) => {
-          const canDeleteDay = canDeleteItineraryDay(
-            day,
-            currentMember,
-            isOwner
-          );
+    <section className="space-y-4">
+      {version.days.map((day) => {
+        const canDeleteDay = canDeleteItineraryDay(
+          day,
+          currentMember,
+          isOwner
+        );
+        const routePlan = routePlanForItineraryDay(
+          day,
+          placeById,
+          hotelAddress,
+          hotelMapUrl
+        );
 
-          return (
-          <div key={day.id}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
+        return (
+          <article key={day.id} className="surface-card">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">
                   {formatDateLabel(day.date)}
                 </p>
                 <h2 className="mt-1 text-lg font-semibold">
                   {day.title} / {day.city}
                 </h2>
+                {routePlan ? (
+                  <a
+                    className="focus-ring mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-primary/20 bg-secondary px-3 text-sm font-medium text-primary transition hover:bg-secondary/75"
+                    href={routePlan.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <Route className="h-4 w-4" aria-hidden="true" />
+                    {routePlan.label}
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  </a>
+                ) : null}
               </div>
               {canEdit ? (
                 <div className="relative shrink-0">
@@ -1612,17 +1638,17 @@ function Timeline({
                         管理本日活动
                       </button>
                       {canDeleteDay ? (
-                      <button
-                        type="button"
-                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-coral hover:bg-secondary/60"
-                        onClick={() => {
-                          setOpenMenuDayId(null);
-                          onDeleteDay(day.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        删除当天
-                      </button>
+                        <button
+                          type="button"
+                          className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-coral hover:bg-secondary/60"
+                          onClick={() => {
+                            setOpenMenuDayId(null);
+                            onDeleteDay(day.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          删除当天
+                        </button>
                       ) : null}
                     </div>
                   ) : null}
@@ -1630,24 +1656,29 @@ function Timeline({
               ) : null}
             </div>
             {day.summary ? (
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 {day.summary}
               </p>
             ) : null}
 
-            <div className="relative mt-4 pl-6 before:absolute before:bottom-5 before:left-[7px] before:top-3 before:w-0.5 before:rounded-full before:bg-primary/25">
-              {day.items.map((item) => (
-                <TimelineItem
-                  key={item.id}
-                  item={item}
-                  place={item.placeId ? placeById.get(item.placeId) : undefined}
-                />
-              ))}
-            </div>
-          </div>
-          );
-        })}
-      </div>
+            {day.items.length > 0 ? (
+              <div className="relative mt-4 pl-6 before:absolute before:bottom-5 before:left-[7px] before:top-3 before:w-0.5 before:rounded-full before:bg-primary/25">
+                {day.items.map((item) => (
+                  <TimelineItem
+                    key={item.id}
+                    item={item}
+                    place={item.placeId ? placeById.get(item.placeId) : undefined}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/35 px-3 py-4 text-sm leading-6 text-muted-foreground">
+                当天还没有活动。
+              </div>
+            )}
+          </article>
+        );
+      })}
     </section>
   );
 }
@@ -2458,64 +2489,6 @@ function getCurrentVersion(
       right.createdAt.localeCompare(left.createdAt)
     )[0]
   );
-}
-
-function placesForVersion(
-  version: ItineraryVersion,
-  placeById: Map<string, TravelPlace>
-) {
-  const placeIds = version.days.flatMap((day) =>
-    day.items.map((item) => item.placeId).filter(Boolean)
-  );
-
-  return placeIds
-    .map((placeId) => placeById.get(placeId as string))
-    .filter((place): place is TravelPlace => Boolean(place));
-}
-
-function routePlanForVersion(
-  version: ItineraryVersion,
-  placeById: Map<string, TravelPlace>,
-  hotelAddress?: string,
-  hotelMapUrl?: string
-) {
-  const routePlaces = placesForVersion(version, placeById);
-  const hotelStop = hotelStopForLocation(hotelAddress, hotelMapUrl);
-
-  if (hotelStop) {
-    const stops = [hotelStop, ...routePlaces];
-
-    return stops.length > 1
-      ? { href: googleMapsRouteUrl(stops), label: "总路线" }
-      : { href: externalMapUrl(hotelStop), label: "查看酒店" };
-  }
-
-  if (routePlaces.length > 1) {
-    return { href: googleMapsRouteUrl(routePlaces), label: "总路线" };
-  }
-
-  if (routePlaces.length === 1) {
-    return { href: externalMapUrl(routePlaces[0]), label: "查看地点" };
-  }
-
-  return null;
-}
-
-function hotelStopForLocation(
-  hotelAddress?: string,
-  hotelMapUrl?: string
-): MapDestination | null {
-  const address = hotelAddress?.trim();
-  const mapUrl = hotelMapUrl?.trim();
-
-  return address || mapUrl
-    ? {
-        name: "酒店",
-        address: address || mapUrl || "",
-        city: "",
-        mapUrl
-      }
-    : null;
 }
 
 function versionDateRange(version: ItineraryVersion) {

@@ -137,6 +137,24 @@ export async function updateUserDisplayName(
   return rows[0] ? toAuthUser(rows[0]) : null;
 }
 
+export async function updateUserPassword(
+  userId: string,
+  passwordHash: string
+) {
+  await supabaseAdminRequest<AppUserRow[]>(
+    "app_users",
+    `?id=eq.${encodeFilterValue(userId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        password_hash: passwordHash,
+        updated_at: new Date().toISOString()
+      })
+    },
+    "return=minimal"
+  );
+}
+
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(

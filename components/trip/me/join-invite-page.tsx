@@ -113,6 +113,7 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
           isSubmitting={auth.isSubmitting}
           onLogin={auth.login}
           onRegister={auth.register}
+          onResetPassword={auth.resetPassword}
         />
       )}
     </main>

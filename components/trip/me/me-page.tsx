@@ -3,16 +3,15 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Check,
   LogOut,
   Pencil,
   Ticket,
-  UserRound,
-  X
+  UserRound
 } from "lucide-react";
 import { AuthCard } from "@/components/trip/me/auth-card";
 import { JoinNicknameModal } from "@/components/trip/me/join-nickname-modal";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import { setActiveTripMemberId } from "@/features/trip/active-member";
 import { joinTripWithInvite } from "@/features/trip/join-trip";
@@ -31,7 +30,7 @@ export function MePage({ tripId }: MePageProps) {
   const [isJoining, setIsJoining] = useState(false);
   const [showJoinNicknameModal, setShowJoinNicknameModal] = useState(false);
   const [profileDisplayName, setProfileDisplayName] = useState("");
-  const [isEditingProfileName, setIsEditingProfileName] = useState(false);
+  const [showProfileNameModal, setShowProfileNameModal] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const accountDisplayName = auth.user?.displayName || auth.user?.username || "";
@@ -40,7 +39,7 @@ export function MePage({ tripId }: MePageProps) {
     if (auth.user) {
       setProfileDisplayName(auth.user.displayName || auth.user.username);
       setProfileError("");
-      setIsEditingProfileName(false);
+      setShowProfileNameModal(false);
     }
   }, [auth.user]);
 
@@ -65,7 +64,7 @@ export function MePage({ tripId }: MePageProps) {
       const updatedUser = await auth.updateDisplayName(nextDisplayName);
 
       setProfileDisplayName(updatedUser?.displayName || nextDisplayName);
-      setIsEditingProfileName(false);
+      setShowProfileNameModal(false);
     } catch (error) {
       setProfileError(
         error instanceof Error ? error.message : "暂时无法保存账号昵称。"
@@ -128,83 +127,32 @@ export function MePage({ tripId }: MePageProps) {
                 <p className="text-sm font-medium text-muted-foreground">
                   当前账号
                 </p>
-                {isEditingProfileName ? (
-                  <form className="grid gap-2" onSubmit={submitProfileName}>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        className="field-control sm:max-w-xs"
-                        autoComplete="nickname"
-                        maxLength={24}
-                        placeholder="账号昵称"
-                        value={profileDisplayName}
-                        onChange={(event) =>
-                          setProfileDisplayName(event.target.value)
-                        }
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          type="submit"
-                          size="sm"
-                          disabled={
-                            isSavingProfile || !profileDisplayName.trim()
-                          }
-                          isLoading={isSavingProfile}
-                        >
-                          {!isSavingProfile ? (
-                            <Check className="h-4 w-4" aria-hidden="true" />
-                          ) : null}
-                          保存
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={isSavingProfile}
-                          onClick={() => {
-                            setProfileDisplayName(accountDisplayName);
-                            setProfileError("");
-                            setIsEditingProfileName(false);
-                          }}
-                        >
-                          <X className="h-4 w-4" aria-hidden="true" />
-                          取消
-                        </Button>
-                      </div>
-                    </div>
-                    {profileError ? (
-                      <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
-                        {profileError}
-                      </p>
-                    ) : null}
-                  </form>
-                ) : (
-                  <div>
-                    <h2 className="flex items-center gap-2 text-xl font-semibold">
-                      <UserRound
-                        className="h-5 w-5 text-teal"
-                        aria-hidden="true"
-                      />
-                      {accountDisplayName}
-                    </h2>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      登录账号：{auth.user.username}
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="mt-3 rounded-full"
-                      onClick={() => {
-                        setProfileDisplayName(accountDisplayName);
-                        setProfileError("");
-                        setIsEditingProfileName(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      修改昵称
-                    </Button>
-                  </div>
-                )}
+                <div>
+                  <h2 className="flex items-center gap-2 text-xl font-semibold">
+                    <UserRound
+                      className="h-5 w-5 text-teal"
+                      aria-hidden="true"
+                    />
+                    {accountDisplayName}
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    登录账号：{auth.user.username}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 rounded-full"
+                    onClick={() => {
+                      setProfileDisplayName(accountDisplayName);
+                      setProfileError("");
+                      setShowProfileNameModal(true);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                    修改昵称
+                  </Button>
+                </div>
               </div>
               <Button
                 type="button"
@@ -258,6 +206,55 @@ export function MePage({ tripId }: MePageProps) {
             }}
             onSubmit={submitJoin}
           />
+          <Modal
+            open={showProfileNameModal}
+            title="修改昵称"
+            description="这是账号昵称，不影响登录账号。"
+            onClose={() => {
+              if (!isSavingProfile) {
+                setProfileDisplayName(accountDisplayName);
+                setProfileError("");
+                setShowProfileNameModal(false);
+              }
+            }}
+          >
+            <form className="grid gap-3" onSubmit={submitProfileName}>
+              <input
+                className="field-control"
+                autoComplete="nickname"
+                maxLength={24}
+                placeholder="输入新的账号昵称"
+                value={profileDisplayName}
+                onChange={(event) => setProfileDisplayName(event.target.value)}
+              />
+              {profileError ? (
+                <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
+                  {profileError}
+                </p>
+              ) : null}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSavingProfile}
+                  onClick={() => {
+                    setProfileDisplayName(accountDisplayName);
+                    setProfileError("");
+                    setShowProfileNameModal(false);
+                  }}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSavingProfile || !profileDisplayName.trim()}
+                  isLoading={isSavingProfile}
+                >
+                  保存昵称
+                </Button>
+              </div>
+            </form>
+          </Modal>
         </>
       ) : (
         <AuthCard
@@ -265,6 +262,7 @@ export function MePage({ tripId }: MePageProps) {
           isSubmitting={auth.isSubmitting}
           onLogin={auth.login}
           onRegister={auth.register}
+          onResetPassword={auth.resetPassword}
         />
       )}
     </main>
