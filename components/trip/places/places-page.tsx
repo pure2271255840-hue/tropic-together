@@ -23,6 +23,7 @@ import {
   type TestAccountTripChangeDetail
 } from "@/components/trip/phase1/test-account-shortcut-events";
 import {
+  coordinateFromMapUrl,
   externalMapUrl,
   locationInputParts
 } from "@/features/trip/navigation-links";
@@ -115,9 +116,10 @@ function placeToForm(place: TravelPlace): PlaceFormState {
 }
 
 function formToInput(form: PlaceFormState, fallbackCity: string): PlaceInput {
-  const lat = form.lat.trim() ? Number(form.lat) : undefined;
-  const lng = form.lng.trim() ? Number(form.lng) : undefined;
   const location = locationInputParts(form.location, form.address, form.mapUrl);
+  const mapCoordinate = coordinateFromMapUrl(location.mapUrl);
+  const lat = form.lat.trim() ? Number(form.lat) : mapCoordinate?.lat;
+  const lng = form.lng.trim() ? Number(form.lng) : mapCoordinate?.lng;
   const category =
     form.category === customCategoryValue
       ? form.customCategory.trim()

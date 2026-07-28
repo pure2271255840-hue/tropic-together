@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  Check,
+  ChevronDown,
   ExternalLink,
+  Globe2,
   Navigation,
   Route,
   UsersRound
@@ -34,10 +37,35 @@ type TripHomePageProps = {
   tripId: string;
 };
 
+type HomeReminder = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  day?: ItineraryDay;
+};
+
+const homeTimezoneStorageKey = "tropic-together.home.timezone";
+const fallbackTimezone = "UTC";
+const commonTimezones = [
+  "Asia/Shanghai",
+  "Asia/Kuala_Lumpur",
+  "Asia/Tokyo",
+  "Asia/Bangkok",
+  "Australia/Sydney",
+  "Europe/London",
+  "America/Los_Angeles",
+  "America/New_York",
+  "UTC"
+];
+
 export function TripHomePage({ tripId }: TripHomePageProps) {
   const auth = useAuthSession();
-  const [confirmedTrip, setConfirmedTrip] = useState<TripPhase1Data | null>(null);
+  const [confirmedTrips, setConfirmedTrips] = useState<TripPhase1Data[]>([]);
   const [isLoadingTrips, setIsLoadingTrips] = useState(true);
+  const [now, setNow] = useState(() => new Date());
+  const [detectedTimezone, setDetectedTimezone] = useState("UTC");
+  const [selectedTimezone, setSelectedTimezone] = useState("UTC");
+  const [isTimezoneMenuOpen, setIsTimezoneMenuOpen] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -46,19 +74,17 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
       groups: Awaited<ReturnType<typeof listTripGroups>>
     ) {
       const trips = await Promise.all(groups.map((group) => loadTripData(group.id)));
-      const confirmedTrips = trips
-        .filter(isConfirmedTrip)
-        .sort(compareTripsByNearestTime);
+      const nextConfirmedTrips = trips.filter(isConfirmedTrip);
 
       if (!isCancelled) {
-        setConfirmedTrip(confirmedTrips[0] ?? null);
+        setConfirmedTrips(nextConfirmedTrips);
         setIsLoadingTrips(false);
       }
     }
 
     async function loadConfirmedTrip() {
       if (!auth.user) {
-        setConfirmedTrip(null);
+        setConfirmedTrips([]);
         setIsLoadingTrips(false);
         return;
       }
@@ -88,41 +114,91 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
     };
   }, [auth.isLoading, auth.user, tripId]);
 
-  const confirmedVersion = confirmedTrip
-    ? getConfirmedVersion(confirmedTrip)
-    : undefined;
-  const confirmedPlaceById = useMemo(
-    () => new Map(confirmedTrip?.places.map((place) => [place.id, place]) ?? []),
-    [confirmedTrip]
+  useEffect(() => {
+    const updateNow = () => setNow(new Date());
+    const timer = window.setInterval(updateNow, 30000);
+
+    updateNow();
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const browserTimezone = detectBrowserTimezone();
+    const savedTimezone = window.localStorage.getItem(homeTimezoneStorageKey);
+    const nextTimezone =
+      savedTimezone && isValidTimezone(savedTimezone)
+        ? savedTimezone
+        : browserTimezone;
+
+    setDetectedTimezone(browserTimezone);
+    setSelectedTimezone(nextTimezone);
+  }, []);
+
+  function chooseTimezone(timezone: string) {
+    setSelectedTimezone(timezone);
+    window.localStorage.setItem(homeTimezoneStorageKey, timezone);
+    setIsTimezoneMenuOpen(false);
+  }
+
+  const timezoneOptions = useMemo(
+    () =>
+      timezoneOptionsFor({
+        selectedTimezone,
+        detectedTimezone,
+        trips: confirmedTrips
+      }),
+    [confirmedTrips, detectedTimezone, selectedTimezone]
   );
-  const nextDay =
-    confirmedTrip && confirmedVersion
-      ? findNextVersionDay(confirmedVersion, confirmedTrip.trip.timezone)
-      : undefined;
-  const nextDayRoutePlan =
-    confirmedTrip && nextDay
+  const reminderTrip = useMemo(
+    () => selectReminderTrip(confirmedTrips, selectedTimezone, now),
+    [confirmedTrips, now, selectedTimezone]
+  );
+  const confirmedVersion = reminderTrip
+    ? getConfirmedVersion(reminderTrip)
+    : undefined;
+  const reminder =
+    reminderTrip && confirmedVersion
+      ? buildHomeReminder(reminderTrip, confirmedVersion, selectedTimezone, now)
+      : null;
+  const confirmedPlaceById = useMemo(
+    () => new Map(reminderTrip?.places.map((place) => [place.id, place]) ?? []),
+    [reminderTrip]
+  );
+  const reminderRoutePlan =
+    reminderTrip && reminder?.day
       ? routePlanForItineraryDay(
-          nextDay,
+          reminder.day,
           confirmedPlaceById,
-          confirmedTrip.trip.hotelAddress,
-          confirmedTrip.trip.hotelMapUrl
+          reminderTrip.trip.hotelAddress,
+          reminderTrip.trip.hotelMapUrl
         )
       : null;
 
   return (
     <main className="page-shell">
       <section>
-        <div>
-          <p className="page-kicker">
-            今日行程
-          </p>
-          <h1 className="page-title">首页</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="page-kicker">
+              今日行程
+            </p>
+            <h1 className="page-title">首页</h1>
+          </div>
+          <TimezoneSelector
+            selectedTimezone={selectedTimezone}
+            detectedTimezone={detectedTimezone}
+            options={timezoneOptions}
+            isOpen={isTimezoneMenuOpen}
+            onToggle={() => setIsTimezoneMenuOpen((current) => !current)}
+            onSelect={chooseTimezone}
+          />
         </div>
       </section>
 
       {isLoadingTrips ? (
         <HomeLoadingState />
-      ) : confirmedTrip ? (
+      ) : reminderTrip ? (
         <section className="corner-mark surface-card">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -130,21 +206,21 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
                 最近已确认行程
               </p>
               <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-normal text-foreground">
-                {confirmedTrip.trip.name}
+                {reminderTrip.trip.name}
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {confirmedTrip.trip.startDate} 至 {confirmedTrip.trip.endDate}
+                {reminderTrip.trip.startDate} 至 {reminderTrip.trip.endDate}
               </p>
             </div>
             <Badge tone="teal" className="shrink-0">
-              {planPhaseLabels[confirmedTrip.trip.phase]}
+              {planPhaseLabels[reminderTrip.trip.phase]}
             </Badge>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
-              href={`/trip/${confirmedTrip.trip.id}/itinerary`}
+              href={`/trip/${reminderTrip.trip.id}/itinerary?open=detail`}
             >
               <Route className="h-4 w-4" aria-hidden="true" />
               打开行程
@@ -152,7 +228,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
           </div>
 
           <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-            {confirmedTrip.members.map((member) => (
+            {reminderTrip.members.map((member) => (
               <MemberPill key={member.id} member={member} />
             ))}
           </div>
@@ -172,11 +248,12 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         </section>
       )}
 
-      {!isLoadingTrips && confirmedTrip ? (
-        <NextDayItineraryCard
-          day={nextDay}
+      {!isLoadingTrips && reminderTrip && reminder ? (
+        <ItineraryReminderCard
+          reminder={reminder}
           placeById={confirmedPlaceById}
-          routePlan={nextDayRoutePlan}
+          routePlan={reminderRoutePlan}
+          timezone={selectedTimezone}
         />
       ) : null}
 
@@ -203,32 +280,37 @@ function HomeLoadingState() {
   );
 }
 
-function NextDayItineraryCard({
-  day,
+function ItineraryReminderCard({
+  reminder,
   placeById,
-  routePlan
+  routePlan,
+  timezone
 }: {
-  day?: ItineraryDay;
+  reminder: HomeReminder;
   placeById: Map<string, TravelPlace>;
   routePlan: ItineraryRoutePlan | null;
+  timezone: string;
 }) {
+  const day = reminder.day;
+
   return (
     <section className="corner-mark rounded-[1.25rem] border border-primary/15 bg-secondary/70 p-5 text-foreground shadow-soft">
-      <div className="flex gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-primary">{reminder.eyebrow}</p>
+          <h2 className="mt-1 text-xl font-semibold leading-tight">
+            {reminder.title}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {reminder.description}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            当前时区：{timezone}
+          </p>
+        </div>
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-white text-primary">
           <Navigation className="h-5 w-5" aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm text-muted-foreground">下一天即将执行的行程</p>
-          <h2 className="mt-1 text-lg font-semibold">
-            {day ? `${formatDateLabel(day.date)} / ${day.title}` : "暂无下一天行程"}
-          </h2>
-          {day ? (
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {[day.city, day.summary].filter(Boolean).join(" / ")}
-            </p>
-          ) : null}
-        </div>
       </div>
 
       {routePlan ? (
@@ -266,6 +348,66 @@ function NextDayItineraryCard({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function TimezoneSelector({
+  selectedTimezone,
+  detectedTimezone,
+  options,
+  isOpen,
+  onToggle,
+  onSelect
+}: {
+  selectedTimezone: string;
+  detectedTimezone: string;
+  options: string[];
+  isOpen: boolean;
+  onToggle: () => void;
+  onSelect: (timezone: string) => void;
+}) {
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        className="focus-ring inline-flex h-10 max-w-[52vw] items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-medium text-foreground shadow-[0_1px_2px_rgba(23,23,23,0.04)] transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
+        aria-expanded={isOpen}
+        onClick={onToggle}
+      >
+        <Globe2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="truncate">{selectedTimezone}</span>
+        <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+      </button>
+      {isOpen ? (
+        <div className="absolute right-0 top-12 z-20 w-72 max-w-[calc(100vw-2rem)] rounded-[1rem] border border-border bg-white p-1 shadow-lift">
+          <p className="px-3 py-2 text-xs leading-5 text-muted-foreground">
+            默认使用系统时区；也可以手动切换。
+          </p>
+          <div className="max-h-72 overflow-y-auto">
+            {options.map((timezone) => (
+              <button
+                key={timezone}
+                type="button"
+                className="focus-ring flex min-h-10 w-full items-center justify-between gap-3 rounded-lg px-3 text-left text-sm font-medium hover:bg-secondary/60 hover:text-primary"
+                onClick={() => onSelect(timezone)}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate">{timezone}</span>
+                  {timezone === detectedTimezone ? (
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      系统时区
+                    </span>
+                  ) : null}
+                </span>
+                {timezone === selectedTimezone ? (
+                  <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -333,52 +475,256 @@ function getConfirmedVersion(data: TripPhase1Data) {
   );
 }
 
-function compareTripsByNearestTime(left: TripPhase1Data, right: TripPhase1Data) {
-  const now = new Date().getTime();
-  const leftTime = new Date(`${left.trip.startDate}T00:00:00`).getTime();
-  const rightTime = new Date(`${right.trip.startDate}T00:00:00`).getTime();
-  const leftDelta = leftTime >= now ? leftTime - now : now - leftTime + 100000000000;
-  const rightDelta = rightTime >= now ? rightTime - now : now - rightTime + 100000000000;
+function selectReminderTrip(
+  trips: TripPhase1Data[],
+  timezone: string,
+  now: Date
+): TripPhase1Data | null {
+  const { date: today } = currentDateTimeInTimezone(timezone, now);
+  const activeTrips = trips
+    .filter((data) => data.trip.startDate <= today && data.trip.endDate >= today)
+    .sort((left, right) => left.trip.startDate.localeCompare(right.trip.startDate));
 
-  return leftDelta - rightDelta;
+  if (activeTrips.length > 0) {
+    return activeTrips[0];
+  }
+
+  const upcomingTrips = trips
+    .filter((data) => data.trip.startDate >= today)
+    .sort((left, right) => left.trip.startDate.localeCompare(right.trip.startDate));
+
+  if (upcomingTrips.length > 0) {
+    return upcomingTrips[0];
+  }
+
+  return (
+    [...trips].sort((left, right) =>
+      right.trip.endDate.localeCompare(left.trip.endDate)
+    )[0] ?? null
+  );
 }
 
-function findNextVersionDay(
+function buildHomeReminder(
+  data: TripPhase1Data,
   version: ItineraryVersion,
-  timezone: string
-): ItineraryDay | undefined {
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(
-    new Date()
+  timezone: string,
+  now: Date
+): HomeReminder {
+  const { date: today, time: nowTime } = currentDateTimeInTimezone(
+    timezone,
+    now
   );
-  const nowTime = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: timezone
-  }).format(new Date());
   const sortedDays = [...version.days].sort((left, right) =>
     left.date.localeCompare(right.date)
   );
+  const firstDay = sortedDays[0];
+  const lastDay = sortedDays[sortedDays.length - 1];
+  const todayDay = sortedDays.find((day) => day.date === today);
+  const nextDay = sortedDays.find((day) => day.date >= today);
 
-  for (const day of sortedDays) {
-    if (day.date < today) {
-      continue;
-    }
+  if (today < data.trip.startDate) {
+    const day = nextDay ?? firstDay;
 
-    if (day.date === today && hasDayEnded(day, nowTime)) {
-      continue;
-    }
-
-    return day;
+    return {
+      eyebrow: "即将开始",
+      title: day
+        ? `${formatDateLabel(day.date)} / ${day.title}`
+        : `${formatDateLabel(data.trip.startDate)} 开始`,
+      description: day
+        ? dayDescription(day, "行程还未到开始日期。")
+        : `${data.trip.name} 将在 ${data.trip.startDate} 开始。`,
+      day
+    };
   }
 
-  return undefined;
+  if (today > data.trip.endDate) {
+    return {
+      eyebrow: "最近已完成",
+      title: lastDay
+        ? `${formatDateLabel(lastDay.date)} / ${lastDay.title}`
+        : "行程已结束",
+      description: lastDay
+        ? dayDescription(lastDay, "这是最近一段已确认行程。")
+        : `${data.trip.name} 已在 ${data.trip.endDate} 结束。`,
+      day: lastDay
+    };
+  }
+
+  if (todayDay) {
+    const firstStartTime = firstScheduledStartTime(todayDay);
+    const isBeforeFirstActivity =
+      Boolean(firstStartTime) && nowTime < firstStartTime;
+    const activityText = activityReminderText(todayDay, nowTime);
+
+    return {
+      eyebrow: isBeforeFirstActivity ? "即将开始" : "今日执行",
+      title: `${formatDateLabel(todayDay.date)} / ${todayDay.title}`,
+      description: dayDescription(todayDay, activityText),
+      day: todayDay
+    };
+  }
+
+  if (nextDay) {
+    return {
+      eyebrow: "即将开始",
+      title: `${formatDateLabel(nextDay.date)} / ${nextDay.title}`,
+      description: dayDescription(nextDay, "今天没有排活动，下一段行程还未开始。"),
+      day: nextDay
+    };
+  }
+
+  return {
+    eyebrow: "今日行程",
+    title: "今天没有行程安排",
+    description: `${data.trip.name} 暂无匹配今天日期的活动。`
+  };
 }
 
-function hasDayEnded(day: ItineraryDay, nowTime: string) {
-  if (day.items.length === 0) {
-    return false;
+function currentDateTimeInTimezone(timezone: string, now: Date) {
+  const safeTimezone = isValidTimezone(timezone) ? timezone : fallbackTimezone;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: safeTimezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(now);
+  const valueFor = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    date: `${valueFor("year")}-${valueFor("month")}-${valueFor("day")}`,
+    time: `${valueFor("hour")}:${valueFor("minute")}`
+  };
+}
+
+function detectBrowserTimezone() {
+  if (typeof Intl === "undefined") {
+    return fallbackTimezone;
   }
 
-  return day.items.every((item) => item.endTime && item.endTime < nowTime);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  return timezone && isValidTimezone(timezone) ? timezone : fallbackTimezone;
+}
+
+function isValidTimezone(timezone: string) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function timezoneOptionsFor({
+  selectedTimezone,
+  detectedTimezone,
+  trips
+}: {
+  selectedTimezone: string;
+  detectedTimezone: string;
+  trips: TripPhase1Data[];
+}) {
+  const tripTimezones = trips.map((data) => data.trip.timezone).filter(Boolean);
+
+  return Array.from(
+    new Set([
+      selectedTimezone,
+      detectedTimezone,
+      ...tripTimezones,
+      ...commonTimezones
+    ])
+  ).filter(isValidTimezone);
+}
+
+function dayDescription(day: ItineraryDay, leadText?: string) {
+  const dayText = [day.city, day.summary].filter(Boolean).join(" / ");
+
+  return [leadText, dayText].filter(Boolean).join(" / ") || "当天还没有活动安排。";
+}
+
+function firstScheduledStartTime(day: ItineraryDay) {
+  return [...day.items]
+    .map((item) => item.startTime)
+    .filter(isValidClockTime)
+    .sort()[0];
+}
+
+function activityReminderText(day: ItineraryDay, nowTime: string) {
+  if (day.items.length === 0) {
+    return "今天还没有活动安排。";
+  }
+
+  const nowMinutes = clockTimeToMinutes(nowTime);
+  const sortedItems = [...day.items].sort((left, right) =>
+    (left.startTime || "99:99").localeCompare(right.startTime || "99:99")
+  );
+  const activeItem = sortedItems.find((item) => {
+    const start = clockTimeToMinutes(item.startTime);
+    const end = clockTimeToMinutes(item.endTime);
+
+    return (
+      start !== undefined &&
+      end !== undefined &&
+      nowMinutes !== undefined &&
+      start <= nowMinutes &&
+      nowMinutes < end
+    );
+  });
+
+  if (activeItem) {
+    return `正在进行：${activeItem.title}`;
+  }
+
+  const nextItem = sortedItems.find((item) => {
+    const start = clockTimeToMinutes(item.startTime);
+
+    return start !== undefined && nowMinutes !== undefined && start > nowMinutes;
+  });
+
+  if (nextItem) {
+    return `下一项 ${nextItem.startTime}：${nextItem.title}`;
+  }
+
+  const timedItems = sortedItems.filter(
+    (item) => clockTimeToMinutes(item.endTime) !== undefined
+  );
+  const hasOnlyEndedTimedItems =
+    timedItems.length > 0 &&
+    nowMinutes !== undefined &&
+    timedItems.every((item) => {
+      const end = clockTimeToMinutes(item.endTime);
+
+      return end !== undefined && end <= nowMinutes;
+    });
+
+  if (hasOnlyEndedTimedItems) {
+    return "今天的活动已完成。";
+  }
+
+  return `今日活动 ${day.items.length} 项。`;
+}
+
+function isValidClockTime(value: string) {
+  return clockTimeToMinutes(value) !== undefined;
+}
+
+function clockTimeToMinutes(value: string) {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (hours > 23 || minutes > 59) {
+    return undefined;
+  }
+
+  return hours * 60 + minutes;
 }

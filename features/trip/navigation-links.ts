@@ -1,4 +1,4 @@
-import type { TravelPlace } from "./types";
+import type { Coordinate, TravelPlace } from "./types";
 
 export type MapDestination = Pick<
   TravelPlace,
@@ -21,6 +21,120 @@ export function normalizedMapUrl(value?: string) {
   } catch {
     return undefined;
   }
+}
+
+function validCoordinate(lat: number, lng: number): Coordinate | undefined {
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return undefined;
+  }
+
+  return { lat, lng };
+}
+
+function coordinateFromPair(value?: string | null) {
+  const match = value
+    ?.trim()
+    .match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return validCoordinate(Number(match[1]), Number(match[2]));
+}
+
+function coordinateFromUrlText(value: string) {
+  const atCoordinate = value.match(
+    /@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:[,/]|$)/
+  );
+
+  if (atCoordinate) {
+    return validCoordinate(Number(atCoordinate[1]), Number(atCoordinate[2]));
+  }
+
+  const googlePlaceCoordinate = value.match(
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/
+  );
+
+  if (googlePlaceCoordinate) {
+    return validCoordinate(
+      Number(googlePlaceCoordinate[1]),
+      Number(googlePlaceCoordinate[2])
+    );
+  }
+
+  return undefined;
+}
+
+function safeDecodeUrlText(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+export function coordinateFromMapUrl(value?: string) {
+  const mapUrl = normalizedMapUrl(value);
+
+  if (!mapUrl) {
+    return undefined;
+  }
+
+  const decodedUrl = safeDecodeUrlText(mapUrl);
+  const textCoordinate = coordinateFromUrlText(decodedUrl);
+
+  if (textCoordinate) {
+    return textCoordinate;
+  }
+
+  try {
+    const url = new URL(mapUrl);
+    const coordinateParams = [
+      "ll",
+      "sll",
+      "near",
+      "q",
+      "query",
+      "destination",
+      "daddr"
+    ];
+
+    for (const param of coordinateParams) {
+      const coordinate = coordinateFromPair(url.searchParams.get(param));
+
+      if (coordinate) {
+        return coordinate;
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function coordinateFor(place: MapDestination) {
+  return place.coordinate ?? coordinateFromMapUrl(place.mapUrl);
+}
+
+function coordinateString(coordinate: Coordinate) {
+  return `${coordinate.lat},${coordinate.lng}`;
+}
+
+function textDestinationFor(place: MapDestination) {
+  return [place.name, place.address, place.city].filter(Boolean).join(", ");
+}
+
+function appleTextDestinationFor(place: MapDestination) {
+  return [place.address, place.city, place.name].filter(Boolean).join(", ");
 }
 
 export function locationInputParts(
@@ -53,11 +167,13 @@ export function locationInputParts(
 }
 
 export function destinationFor(place: MapDestination) {
-  if (place.coordinate) {
-    return `${place.coordinate.lat},${place.coordinate.lng}`;
+  const coordinate = coordinateFor(place);
+
+  if (coordinate) {
+    return coordinateString(coordinate);
   }
 
-  return [place.name, place.address, place.city].filter(Boolean).join(", ");
+  return textDestinationFor(place);
 }
 
 export function externalMapUrl(place: MapDestination) {
@@ -77,19 +193,27 @@ export function googleMapsDirectionsUrl(place: MapDestination) {
 }
 
 export function appleMapsSearchUrl(place: MapDestination) {
-  const query = encodeURIComponent(place.name);
+  const coordinate = coordinateFor(place);
+  const query = encodeURIComponent(place.name || appleTextDestinationFor(place));
 
-  if (place.coordinate) {
-    return `https://maps.apple.com/?q=${query}&ll=${place.coordinate.lat},${place.coordinate.lng}`;
+  if (coordinate) {
+    return `https://maps.apple.com/?ll=${coordinateString(coordinate)}&q=${query}`;
   }
 
-  return `https://maps.apple.com/?q=${encodeURIComponent(destinationFor(place))}`;
+  if (place.address) {
+    return `https://maps.apple.com/?address=${encodeURIComponent(appleTextDestinationFor(place))}`;
+  }
+
+  return `https://maps.apple.com/?q=${encodeURIComponent(textDestinationFor(place))}`;
 }
 
 export function appleMapsDirectionsUrl(place: MapDestination) {
-  const destination = encodeURIComponent(destinationFor(place));
+  const coordinate = coordinateFor(place);
+  const destination = encodeURIComponent(
+    coordinate ? coordinateString(coordinate) : appleTextDestinationFor(place)
+  );
 
-  return `https://maps.apple.com/?daddr=${destination}`;
+  return `https://maps.apple.com/?daddr=${destination}&dirflg=d`;
 }
 
 export function googleMapsRouteUrl(places: MapDestination[]) {

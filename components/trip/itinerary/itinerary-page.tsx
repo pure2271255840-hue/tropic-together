@@ -4,13 +4,14 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  AlertTriangle,
   CalendarDays,
   CheckCircle2,
   Copy,
   ExternalLink,
   House,
+  Lock,
   MapPin,
-  MoreHorizontal,
   Pencil,
   Plus,
   Route,
@@ -20,6 +21,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  Unlock,
   UsersRound
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -87,6 +89,7 @@ import { cn } from "@/lib/utils";
 
 type ItineraryPageProps = {
   tripId: string;
+  initialSelectedTripId?: string | null;
 };
 
 type ItemFormState = {
@@ -136,14 +139,18 @@ function defaultItemForm(dayId: string): ItemFormState {
   };
 }
 
-export function ItineraryPage({ tripId }: ItineraryPageProps) {
+export function ItineraryPage({
+  tripId,
+  initialSelectedTripId = null
+}: ItineraryPageProps) {
   const auth = useAuthSession();
   const [tripGroups, setTripGroups] = useState<TripGroupSummary[]>([]);
   const [isTripGroupsLoading, setIsTripGroupsLoading] = useState(true);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(
+    initialSelectedTripId
+  );
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [managedDayId, setManagedDayId] = useState<string | null>(null);
   const [pendingDeleteDayId, setPendingDeleteDayId] = useState<string | null>(
     null
   );
@@ -197,10 +204,6 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
     activeVersion?.days.some((day) => day.id === itemForm.dayId)
       ? itemForm.dayId
       : firstDayId;
-  const managedDay =
-    activeVersion && managedDayId
-      ? activeVersion.days.find((day) => day.id === managedDayId) ?? null
-      : null;
   const pendingDeleteDay =
     activeVersion && pendingDeleteDayId
       ? activeVersion.days.find((day) => day.id === pendingDeleteDayId) ?? null
@@ -231,6 +234,34 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       ),
     [itemForm.placeId, placeRankings, usedPlaceIdsByOtherItems]
   );
+  const itemTimeRangeError = timeRangeErrorFor(
+    itemForm.startTime,
+    itemForm.endTime
+  );
+  const itemTimeConflicts = useMemo(() => {
+    if (!activeVersion || !selectedDayId || itemTimeRangeError) {
+      return [];
+    }
+
+    const day = activeVersion.days.find((item) => item.id === selectedDayId);
+
+    if (!day) {
+      return [];
+    }
+
+    return conflictingItineraryItems(day.items, {
+      id: editingItem?.id,
+      startTime: itemForm.startTime,
+      endTime: itemForm.endTime
+    });
+  }, [
+    activeVersion,
+    editingItem?.id,
+    itemForm.endTime,
+    itemForm.startTime,
+    itemTimeRangeError,
+    selectedDayId
+  ]);
 
   const refreshTripGroups = useCallback(async (showLoading = false) => {
     if (!auth.user) {
@@ -456,7 +487,12 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   function submitItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!activeVersion || !selectedDayId || !itemForm.title.trim()) {
+    if (
+      !activeVersion ||
+      !selectedDayId ||
+      !itemForm.title.trim() ||
+      itemTimeRangeError
+    ) {
       return;
     }
 
@@ -562,8 +598,32 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           onConfirmFinal={() => setPendingConfirmFinalVersionId(activeVersion.id)}
           onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
           onManageItinerary={() => setShowManageItineraryModal(true)}
-          onManageDay={setManagedDayId}
           onDeleteDay={setPendingDeleteDayId}
+          onEditActivity={(item) => {
+            if (!canManageItineraryItem(item, currentMember, isOwner)) {
+              return;
+            }
+
+            setEditingItem(item);
+            setItemForm(itemToForm(item));
+            setShowAddItemModal(true);
+          }}
+          onDeleteActivity={(item) => {
+            if (canManageItineraryItem(item, currentMember, isOwner)) {
+              setPendingDeleteItem(item);
+            }
+          }}
+          onToggleActivityLocked={(item) => {
+            if (!canManageItineraryItem(item, currentMember, isOwner)) {
+              return;
+            }
+
+            actions.setItineraryItemLocked(
+              activeVersion.id,
+              item.id,
+              !item.isLocked
+            );
+          }}
         />
       ) : (
         <TripGroupWorkspace
@@ -612,33 +672,6 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
               setShowVoteModal(false);
             }}
           />
-
-          {managedDay ? (
-            <ManageDayActivitiesModal
-              key={`${activeVersion.id}-${managedDay.id}`}
-              open
-              day={managedDay}
-              placeById={placeById}
-              currentMember={currentMember}
-              isOwner={isOwner}
-              onClose={() => setManagedDayId(null)}
-              onEditActivity={(item) => {
-                if (!canManageItineraryItem(item, currentMember, isOwner)) {
-                  return;
-                }
-
-                setManagedDayId(null);
-                setEditingItem(item);
-                setItemForm(itemToForm(item));
-                setShowAddItemModal(true);
-              }}
-              onDeleteActivity={(item) => {
-                if (canManageItineraryItem(item, currentMember, isOwner)) {
-                  setPendingDeleteItem(item);
-                }
-              }}
-            />
-          ) : null}
 
           <ManageItineraryModal
             open={showManageItineraryModal}
@@ -742,6 +775,30 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
                   </div>
                 </fieldset>
               </div>
+              {itemTimeRangeError ? (
+                <p className="flex items-center gap-2 rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {itemTimeRangeError}
+                </p>
+              ) : null}
+              {itemTimeConflicts.length > 0 ? (
+                <div className="rounded-lg border border-sunset/20 bg-sunset/10 px-3 py-2 text-sm leading-6 text-sunset">
+                  <p className="flex items-center gap-2 font-medium">
+                    <AlertTriangle
+                      className="h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    当天时间冲突
+                  </p>
+                  <div className="mt-1 space-y-1 text-muted-foreground">
+                    {itemTimeConflicts.map((item) => (
+                      <p key={item.id}>
+                        与「{item.title}」{formatItemTimeRange(item)} 重叠。
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <textarea
                 className="field-area min-h-20"
                 placeholder="备注"
@@ -758,7 +815,10 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
                 />
                 锁定安排
               </label>
-              <Button type="submit" disabled={!itemForm.title.trim()}>
+              <Button
+                type="submit"
+                disabled={!itemForm.title.trim() || Boolean(itemTimeRangeError)}
+              >
                 {editingItem ? "保存修改" : "添加活动"}
               </Button>
             </form>
@@ -1425,8 +1485,10 @@ function ItineraryDetail({
   onConfirmFinal,
   onCancelFinal,
   onManageItinerary,
-  onManageDay,
-  onDeleteDay
+  onDeleteDay,
+  onEditActivity,
+  onDeleteActivity,
+  onToggleActivityLocked
 }: {
   version: ItineraryVersion;
   tripName: string;
@@ -1452,8 +1514,10 @@ function ItineraryDetail({
   onConfirmFinal: () => void;
   onCancelFinal: () => void;
   onManageItinerary: () => void;
-  onManageDay: (dayId: string) => void;
   onDeleteDay: (dayId: string) => void;
+  onEditActivity: (item: ItineraryItem) => void;
+  onDeleteActivity: (item: ItineraryItem) => void;
+  onToggleActivityLocked: (item: ItineraryItem) => void;
 }) {
   const routePlan = routePlanForItineraryVersion(
     version,
@@ -1619,8 +1683,10 @@ function ItineraryDetail({
         isOwner={isOwner}
         canEdit
         onAddItem={onAddItem}
-        onManageDay={onManageDay}
         onDeleteDay={onDeleteDay}
+        onEditActivity={onEditActivity}
+        onDeleteActivity={onDeleteActivity}
+        onToggleActivityLocked={onToggleActivityLocked}
       />
 
       {votes.length > 0 ? (
@@ -1658,8 +1724,10 @@ function Timeline({
   isOwner,
   canEdit,
   onAddItem,
-  onManageDay,
-  onDeleteDay
+  onDeleteDay,
+  onEditActivity,
+  onDeleteActivity,
+  onToggleActivityLocked
 }: {
   version: ItineraryVersion;
   placeById: Map<string, TravelPlace>;
@@ -1669,11 +1737,11 @@ function Timeline({
   isOwner: boolean;
   canEdit: boolean;
   onAddItem: (dayId?: string) => void;
-  onManageDay: (dayId: string) => void;
   onDeleteDay: (dayId: string) => void;
+  onEditActivity: (item: ItineraryItem) => void;
+  onDeleteActivity: (item: ItineraryItem) => void;
+  onToggleActivityLocked: (item: ItineraryItem) => void;
 }) {
-  const [openMenuDayId, setOpenMenuDayId] = useState<string | null>(null);
-
   return (
     <section className="space-y-4">
       {version.days.map((day) => {
@@ -1688,6 +1756,7 @@ function Timeline({
           hotelAddress,
           hotelMapUrl
         );
+        const conflictItemIds = itineraryTimeConflictIds(day.items);
 
         return (
           <article key={day.id} className="surface-card">
@@ -1713,58 +1782,30 @@ function Timeline({
                 ) : null}
               </div>
               {canEdit ? (
-                <div className="relative shrink-0">
+                <div className="flex shrink-0 items-center gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
-                    aria-label="管理本日活动"
-                    onClick={() =>
-                      setOpenMenuDayId((current) =>
-                        current === day.id ? null : day.id
-                      )
-                    }
+                    className="h-10 w-10"
+                    aria-label="添加活动"
+                    title="添加活动"
+                    onClick={() => onAddItem(day.id)}
                   >
-                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                    <Plus className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                  {openMenuDayId === day.id ? (
-                    <div className="absolute right-0 top-12 z-20 w-44 rounded-[1rem] border border-border bg-white p-1 shadow-lift">
-                      <button
-                        type="button"
-                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-secondary/60 hover:text-primary"
-                        onClick={() => {
-                          setOpenMenuDayId(null);
-                          onAddItem(day.id);
-                        }}
-                      >
-                        <Plus className="h-4 w-4" aria-hidden="true" />
-                        添加活动
-                      </button>
-                      <button
-                        type="button"
-                        className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-secondary/60 hover:text-primary"
-                        onClick={() => {
-                          setOpenMenuDayId(null);
-                          onManageDay(day.id);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                        管理本日活动
-                      </button>
-                      {canDeleteDay ? (
-                        <button
-                          type="button"
-                          className="focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-coral hover:bg-secondary/60"
-                          onClick={() => {
-                            setOpenMenuDayId(null);
-                            onDeleteDay(day.id);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          删除当天
-                        </button>
-                      ) : null}
-                    </div>
+                  {canDeleteDay ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 text-coral hover:text-coral"
+                      aria-label="删除当天"
+                      title="删除当天"
+                      onClick={() => onDeleteDay(day.id)}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
                   ) : null}
                 </div>
               ) : null}
@@ -1782,6 +1823,15 @@ function Timeline({
                     key={item.id}
                     item={item}
                     place={item.placeId ? placeById.get(item.placeId) : undefined}
+                    canManage={canManageItineraryItem(
+                      item,
+                      currentMember,
+                      isOwner
+                    )}
+                    hasTimeConflict={conflictItemIds.has(item.id)}
+                    onEditActivity={onEditActivity}
+                    onDeleteActivity={onDeleteActivity}
+                    onToggleLocked={onToggleActivityLocked}
                   />
                 ))}
               </div>
@@ -1799,11 +1849,24 @@ function Timeline({
 
 function TimelineItem({
   item,
-  place
+  place,
+  canManage,
+  hasTimeConflict,
+  onEditActivity,
+  onDeleteActivity,
+  onToggleLocked
 }: {
   item: ItineraryItem;
   place?: TravelPlace;
+  canManage: boolean;
+  hasTimeConflict: boolean;
+  onEditActivity: (item: ItineraryItem) => void;
+  onDeleteActivity: (item: ItineraryItem) => void;
+  onToggleLocked: (item: ItineraryItem) => void;
 }) {
+  const LockIcon = item.isLocked ? Lock : Unlock;
+  const lockStateLabel = item.isLocked ? "已锁定" : "可编辑";
+
   return (
     <div className="relative pb-5 last:pb-0">
       <span className="absolute left-[-1.5rem] top-1 z-10 flex h-4 w-4 rounded-full border-2 border-white bg-primary shadow-[0_0_0_4px_rgba(242,99,76,0.12)]" />
@@ -1812,11 +1875,66 @@ function TimelineItem({
           {item.startTime || "--:--"} - {item.endTime || "--:--"}
         </p>
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold leading-6">{item.title}</h3>
-            <Badge tone={item.isLocked ? "teal" : "outline"}>
-              {item.isLocked ? "已锁定" : "可编辑"}
-            </Badge>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-semibold leading-6">{item.title}</h3>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {canManage ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
+                      aria-label={item.isLocked ? "解锁活动" : "锁定活动"}
+                      title={item.isLocked ? "解锁活动" : "锁定活动"}
+                      onClick={() => onToggleLocked(item)}
+                    >
+                      <LockIcon className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "focus-ring inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-xs font-medium transition hover:border-primary/25 hover:bg-secondary/55 hover:text-primary",
+                        "border-border bg-white/85 text-muted-foreground"
+                      )}
+                      onClick={() => onEditActivity(item)}
+                    >
+                      可编辑
+                    </button>
+                  </>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <LockIcon
+                      className="h-4 w-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <Badge tone={item.isLocked ? "teal" : "outline"}>
+                      {lockStateLabel}
+                    </Badge>
+                  </span>
+                )}
+                {hasTimeConflict ? (
+                  <Badge tone="coral" className="gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                    时间冲突
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+            {canManage ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-coral hover:text-coral"
+                aria-label="删除活动"
+                title="删除活动"
+                onClick={() => onDeleteActivity(item)}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            ) : null}
           </div>
           {place ? (
             <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -2269,90 +2387,6 @@ function DeleteItemConfirmModal({
   );
 }
 
-function ManageDayActivitiesModal({
-  open,
-  day,
-  placeById,
-  currentMember,
-  isOwner,
-  onClose,
-  onEditActivity,
-  onDeleteActivity
-}: {
-  open: boolean;
-  day: ItineraryDay;
-  placeById: Map<string, TravelPlace>;
-  currentMember: TripMember;
-  isOwner: boolean;
-  onClose: () => void;
-  onEditActivity: (item: ItineraryItem) => void;
-  onDeleteActivity: (item: ItineraryItem) => void;
-}) {
-  return (
-    <Modal
-      open={open}
-      title="管理本日活动"
-      description={`${formatDateLabel(day.date)} / ${day.city}`}
-      onClose={onClose}
-    >
-      <div className="grid gap-3">
-        {day.items.length > 0 ? (
-          <div className="divide-y divide-border rounded-[1.125rem] border border-border bg-white">
-            {day.items.map((item) => {
-              const place = item.placeId ? placeById.get(item.placeId) : undefined;
-              const canManageItem = canManageItineraryItem(
-                item,
-                currentMember,
-                isOwner
-              );
-
-              return (
-                <div key={item.id} className="grid gap-3 p-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold">
-                      {item.startTime || "--:--"} - {item.endTime || "--:--"}
-                    </p>
-                    <p className="mt-1 font-medium leading-6">{item.title}</p>
-                    {place ? (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {place.name}
-                      </p>
-                    ) : null}
-                  </div>
-                  {canManageItem ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => onEditActivity(item)}
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      编辑
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => onDeleteActivity(item)}
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      删除
-                    </Button>
-                  </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="surface-card-muted text-center text-sm text-muted-foreground">
-            今天还没有活动。
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
 function AiDraftPreviewModal({
   state,
   onClose,
@@ -2558,6 +2592,105 @@ function ExternalNavLink({ href, label }: { href: string; label: string }) {
       )}
     </a>
   );
+}
+
+type TimeRangeCandidate = {
+  id?: string;
+  startTime: string;
+  endTime: string;
+};
+
+function timeToMinutes(value: string) {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (hours > 23 || minutes > 59) {
+    return undefined;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function timeRangeFor(item: TimeRangeCandidate) {
+  const start = timeToMinutes(item.startTime);
+  const end = timeToMinutes(item.endTime);
+
+  if (start === undefined || end === undefined || end <= start) {
+    return undefined;
+  }
+
+  return { start, end };
+}
+
+function timeRangeErrorFor(startTime: string, endTime: string) {
+  if (!startTime || !endTime) {
+    return undefined;
+  }
+
+  return timeRangeFor({ startTime, endTime })
+    ? undefined
+    : "结束时间需要晚于开始时间。";
+}
+
+function timeRangesOverlap(
+  left: { start: number; end: number },
+  right: { start: number; end: number }
+) {
+  return left.start < right.end && right.start < left.end;
+}
+
+function conflictingItineraryItems(
+  items: ItineraryItem[],
+  candidate: TimeRangeCandidate
+) {
+  const candidateRange = timeRangeFor(candidate);
+
+  if (!candidateRange) {
+    return [];
+  }
+
+  return items.filter((item) => {
+    if (candidate.id && item.id === candidate.id) {
+      return false;
+    }
+
+    const itemRange = timeRangeFor(item);
+
+    return itemRange ? timeRangesOverlap(candidateRange, itemRange) : false;
+  });
+}
+
+function itineraryTimeConflictIds(items: ItineraryItem[]) {
+  const conflictIds = new Set<string>();
+
+  items.forEach((item, index) => {
+    const itemRange = timeRangeFor(item);
+
+    if (!itemRange) {
+      return;
+    }
+
+    items.slice(index + 1).forEach((nextItem) => {
+      const nextRange = timeRangeFor(nextItem);
+
+      if (nextRange && timeRangesOverlap(itemRange, nextRange)) {
+        conflictIds.add(item.id);
+        conflictIds.add(nextItem.id);
+      }
+    });
+  });
+
+  return conflictIds;
+}
+
+function formatItemTimeRange(item: ItineraryItem) {
+  return `${item.startTime || "--:--"} - ${item.endTime || "--:--"}`;
 }
 
 function itemToForm(item: ItineraryItem): ItemFormState {
