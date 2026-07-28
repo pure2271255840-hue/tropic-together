@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useAuthSession } from "@/features/auth/use-auth-session";
+import { getTripMemberForUser } from "@/features/trip/access";
 import {
   testAccountTripChangeEvent,
   type TestAccountTripChangeDetail
@@ -149,7 +150,9 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   const [showPlaceModal, setShowPlaceModal] = useState(false);
   const [form, setForm] = useState<PlaceFormState>(emptyForm);
 
+  const authenticatedMember = getTripMemberForUser(data, auth.user);
   const currentMember =
+    authenticatedMember ??
     data.members.find((member) => member.id === data.currentMemberId) ??
     data.members[0];
   const rankings = useMemo(
@@ -158,11 +161,11 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   );
   const pendingCount = rankings.filter(
     (ranking) =>
-      !ranking.votes.some((vote) => vote.memberId === data.currentMemberId)
+      !ranking.votes.some((vote) => vote.memberId === currentMember.id)
   ).length;
   const visibleRankings = rankings.filter((ranking) => {
     if (filter === "pending") {
-      return !ranking.votes.some((vote) => vote.memberId === data.currentMemberId);
+      return !ranking.votes.some((vote) => vote.memberId === currentMember.id);
     }
 
     return true;
@@ -222,6 +225,15 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
       })
     );
   }, [workingTripId]);
+
+  useEffect(() => {
+    if (
+      authenticatedMember &&
+      data.currentMemberId !== authenticatedMember.id
+    ) {
+      actions.setCurrentMember(authenticatedMember.id);
+    }
+  }, [actions, authenticatedMember, data.currentMemberId]);
 
   function updateForm<K extends keyof PlaceFormState>(
     key: K,

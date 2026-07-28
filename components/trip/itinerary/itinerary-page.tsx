@@ -31,6 +31,7 @@ import {
 } from "@/components/trip/phase1/test-account-shortcut-events";
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import type { AuthUser } from "@/features/auth/types";
+import { getTripMemberForUser } from "@/features/trip/access";
 import { setActiveTripMemberId } from "@/features/trip/active-member";
 import { requestAiItineraryDraft } from "@/features/trip/ai-client";
 import type { AiTripActionMode } from "@/features/trip/ai-types";
@@ -172,7 +173,9 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   });
   const workingTripId = selectedTripId ?? tripId;
   const { data, isLoaded, actions } = useLocalTripStore(workingTripId);
+  const authenticatedMember = getTripMemberForUser(data, auth.user);
   const currentMember =
+    authenticatedMember ??
     data.members.find((member) => member.id === data.currentMemberId) ??
     data.members[0];
   const isOwner = currentMember?.role === "owner";
@@ -281,6 +284,15 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       })
     );
   }, [workingTripId]);
+
+  useEffect(() => {
+    if (
+      authenticatedMember &&
+      data.currentMemberId !== authenticatedMember.id
+    ) {
+      actions.setCurrentMember(authenticatedMember.id);
+    }
+  }, [actions, authenticatedMember, data.currentMemberId]);
 
   function openTripGroup(groupId: string) {
     setSelectedTripId(groupId);

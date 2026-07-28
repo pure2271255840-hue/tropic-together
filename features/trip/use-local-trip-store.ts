@@ -251,7 +251,16 @@ export function useLocalTripStore(tripId: string) {
     () => ({
       setCurrentMember(memberId: string) {
         setActiveTripMemberId(tripId, memberId);
-        commit((current) => ({ ...current, currentMemberId: memberId }));
+        setData((current) => {
+          if (current.currentMemberId === memberId) {
+            return current;
+          }
+
+          const next = { ...current, currentMemberId: memberId };
+
+          latestDataRef.current = next;
+          return next;
+        });
       },
       updateTripSettings(input: TripSettingsInput) {
         commit((current) => updateTripSettingsInTrip(current, input));
