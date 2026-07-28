@@ -31,10 +31,10 @@ import {
 } from "@/components/trip/phase1/test-account-shortcut-events";
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import type { AuthUser } from "@/features/auth/types";
-import { getTripMemberForUser } from "@/features/trip/access";
 import { setActiveTripMemberId } from "@/features/trip/active-member";
 import { requestAiItineraryDraft } from "@/features/trip/ai-client";
 import type { AiTripActionMode } from "@/features/trip/ai-types";
+import { resolveCurrentTripMember } from "@/features/trip/member-resolution";
 import {
   hotelStopForLocation,
   routePlanForItineraryDay,
@@ -154,6 +154,10 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   const [showTripSettingsModal, setShowTripSettingsModal] = useState(false);
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   const [deletingTripId, setDeletingTripId] = useState<string | null>(null);
+  const [pendingDeleteTrip, setPendingDeleteTrip] =
+    useState<TripGroupSummary | null>(null);
+  const [pendingConfirmFinalVersionId, setPendingConfirmFinalVersionId] =
+    useState<string | null>(null);
   const [aiActionState, setAiActionState] = useState<AiActionState | null>(null);
   const [aiDraftPreview, setAiDraftPreview] =
     useState<AiDraftPreviewState | null>(null);
@@ -173,11 +177,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
   });
   const workingTripId = selectedTripId ?? tripId;
   const { data, isLoaded, actions } = useLocalTripStore(workingTripId);
-  const authenticatedMember = getTripMemberForUser(data, auth.user);
-  const currentMember =
-    authenticatedMember ??
-    data.members.find((member) => member.id === data.currentMemberId) ??
-    data.members[0];
+  const currentMember = resolveCurrentTripMember(data, auth.user);
   const isOwner = currentMember?.role === "owner";
   const placeById = useMemo(
     () => new Map(data.places.map((place) => [place.id, place])),
@@ -287,12 +287,12 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
 
   useEffect(() => {
     if (
-      authenticatedMember &&
-      data.currentMemberId !== authenticatedMember.id
+      currentMember &&
+      data.currentMemberId !== currentMember.id
     ) {
-      actions.setCurrentMember(authenticatedMember.id);
+      actions.setCurrentMember(currentMember.id);
     }
-  }, [actions, authenticatedMember, data.currentMemberId]);
+  }, [actions, currentMember, data.currentMemberId]);
 
   function openTripGroup(groupId: string) {
     setSelectedTripId(groupId);
@@ -411,23 +411,26 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
     }
   }
 
-  async function deleteTripGroup(group: TripGroupSummary) {
-    if (!window.confirm(`删除行程「${group.name}」？`)) {
+  async function confirmDeleteTripGroup() {
+    if (!pendingDeleteTrip) {
       return;
     }
 
-    setDeletingTripId(group.id);
+    setDeletingTripId(pendingDeleteTrip.id);
 
     try {
-      await deleteTripData(group.id);
-      setTripGroups((current) => current.filter((item) => item.id !== group.id));
+      await deleteTripData(pendingDeleteTrip.id);
+      setTripGroups((current) =>
+        current.filter((item) => item.id !== pendingDeleteTrip.id)
+      );
       void refreshTripGroups();
 
-      if (selectedTripId === group.id) {
+      if (selectedTripId === pendingDeleteTrip.id) {
         setSelectedTripId(null);
       }
     } finally {
       setDeletingTripId(null);
+      setPendingDeleteTrip(null);
     }
   }
 
@@ -520,7 +523,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           isTripGroupsLoading={isTripGroupsLoading}
           onOpenTrip={openTripGroup}
           onCreateTrip={openNewTripModal}
-          onDeleteTrip={deleteTripGroup}
+          onDeleteTrip={setPendingDeleteTrip}
           deletingTripId={deletingTripId}
         />
       ) : !isLoaded ? (
@@ -556,15 +559,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           onAddItem={openAddItem}
           onOrganizeWithAi={() => void runAiAction("organize")}
           onOpenSettings={openTripSettingsModal}
-          onConfirmFinal={() => {
-            if (
-              window.confirm(
-                "确认后，当前行程草稿会成为最终版；未投票地点不会阻止确认。确定要确认最终版吗？"
-              )
-            ) {
-              actions.confirmItineraryVersion(activeVersion.id);
-            }
-          }}
+          onConfirmFinal={() => setPendingConfirmFinalVersionId(activeVersion.id)}
           onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
           onManageItinerary={() => setShowManageItineraryModal(true)}
           onManageDay={setManagedDayId}
@@ -771,6 +766,31 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
         </>
       ) : null}
 
+      <ConfirmFinalVersionModal
+        open={Boolean(pendingConfirmFinalVersionId)}
+        onClose={() => setPendingConfirmFinalVersionId(null)}
+        onConfirm={() => {
+          if (pendingConfirmFinalVersionId) {
+            actions.confirmItineraryVersion(pendingConfirmFinalVersionId);
+          }
+
+          setPendingConfirmFinalVersionId(null);
+        }}
+      />
+
+      <DeleteTripConfirmModal
+        trip={pendingDeleteTrip}
+        isDeleting={Boolean(
+          pendingDeleteTrip && deletingTripId === pendingDeleteTrip.id
+        )}
+        onClose={() => {
+          if (!deletingTripId) {
+            setPendingDeleteTrip(null);
+          }
+        }}
+        onConfirm={() => void confirmDeleteTripGroup()}
+      />
+
       <Modal
         open={showNewTripModal}
         title="发起行程"
@@ -898,6 +918,88 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
         }}
       />
     </main>
+  );
+}
+
+function ConfirmFinalVersionModal({
+  open,
+  onClose,
+  onConfirm
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      title="确认最终版"
+      description="当前草稿会成为本次旅行的最终行程。"
+      onClose={onClose}
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[1rem] border border-primary/15 bg-secondary p-4 text-sm leading-6 text-muted-foreground">
+          未投票地点不会阻止确认。确认后，首页会按天显示即将执行的行程。
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            先不确认
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            确认最终版
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DeleteTripConfirmModal({
+  trip,
+  isDeleting,
+  onClose,
+  onConfirm
+}: {
+  trip: TripGroupSummary | null;
+  isDeleting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      open={Boolean(trip)}
+      title="删除行程"
+      description={trip?.name ?? ""}
+      onClose={onClose}
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[1rem] border border-coral/20 bg-secondary p-4 text-sm leading-6 text-muted-foreground">
+          删除后，这个行程的地点、投票和行程草稿都会一起移除，此操作无法撤销。
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isDeleting}
+            onClick={onClose}
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            disabled={isDeleting}
+            isLoading={isDeleting}
+            onClick={onConfirm}
+          >
+            {!isDeleting ? (
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            ) : null}
+            {isDeleting ? "删除中" : "确认删除"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

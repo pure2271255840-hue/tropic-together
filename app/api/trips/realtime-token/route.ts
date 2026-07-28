@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authErrorResponse, getAuthenticatedUser } from "@/features/auth/server";
 import { createSupabaseRealtimeToken } from "@/features/supabase/realtime-token";
+import { decodeRouteParam } from "@/features/trip/route-params";
 import { requireReadableTrip } from "@/features/trip/server-authorization";
 
 export const runtime = "nodejs";
@@ -16,7 +17,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const tripId = request.nextUrl.searchParams.get("tripId")?.trim();
+    const tripId = decodeRouteParam(
+      request.nextUrl.searchParams.get("tripId") ?? ""
+    );
 
     if (!tripId) {
       return NextResponse.json(

@@ -1,4 +1,5 @@
 import type { AuthUser } from "@/features/auth/types";
+import { tripGroupHasLegacyOwnerForUser } from "./member-resolution";
 import { tripMemberBelongsToUser } from "./access";
 import type {
   ItineraryVersion,
@@ -25,8 +26,10 @@ export function isTripManagedByUser(
   group: TripGroupSummary,
   user: AuthUser | null
 ) {
-  return group.members.some(
-    (member) => member.role === "owner" && memberBelongsToUser(member, user)
+  return (
+    group.members.some(
+      (member) => member.role === "owner" && memberBelongsToUser(member, user)
+    ) || tripGroupHasLegacyOwnerForUser(group.members, user)
   );
 }
 
@@ -41,8 +44,11 @@ export function isJoinedTripForUser(
   group: TripGroupSummary,
   user: AuthUser | null
 ) {
-  return group.members.some(
-    (member) => member.role !== "owner" && memberBelongsToUser(member, user)
+  return (
+    !isTripManagedByUser(group, user) &&
+    group.members.some(
+      (member) => member.role !== "owner" && memberBelongsToUser(member, user)
+    )
   );
 }
 

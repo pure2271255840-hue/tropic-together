@@ -1,4 +1,5 @@
 import { MePage } from "@/components/trip/me/me-page";
+import { decodeRouteParam } from "@/features/trip/route-params";
 
 export const dynamic = "force-dynamic";
 
@@ -9,5 +10,5 @@ export default async function TripMeRoute({
 }) {
   const { tripId } = await params;
 
-  return <MePage tripId={tripId} />;
+  return <MePage tripId={decodeRouteParam(tripId)} />;
 }

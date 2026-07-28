@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useAuthSession } from "@/features/auth/use-auth-session";
-import { getTripMemberForUser } from "@/features/trip/access";
+import { resolveCurrentTripMember } from "@/features/trip/member-resolution";
 import {
   testAccountTripChangeEvent,
   type TestAccountTripChangeDetail
@@ -141,20 +141,18 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   const auth = useAuthSession();
   const [tripGroups, setTripGroups] = useState<TripGroupSummary[]>([]);
   const [isTripGroupsLoading, setIsTripGroupsLoading] = useState(true);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(tripId);
   const workingTripId = selectedTripId ?? tripId;
   const { data, isLoaded, actions } = useLocalTripStore(workingTripId);
   const [filter, setFilter] = useState<PlaceFilter>("pending");
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
   const [votingPlaceId, setVotingPlaceId] = useState<string | null>(null);
+  const [pendingDeletePlace, setPendingDeletePlace] =
+    useState<TravelPlace | null>(null);
   const [showPlaceModal, setShowPlaceModal] = useState(false);
   const [form, setForm] = useState<PlaceFormState>(emptyForm);
 
-  const authenticatedMember = getTripMemberForUser(data, auth.user);
-  const currentMember =
-    authenticatedMember ??
-    data.members.find((member) => member.id === data.currentMemberId) ??
-    data.members[0];
+  const currentMember = resolveCurrentTripMember(data, auth.user);
   const rankings = useMemo(
     () => buildPlaceRankings(data.places, data.placeVotes),
     [data.placeVotes, data.places]
@@ -228,12 +226,12 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
 
   useEffect(() => {
     if (
-      authenticatedMember &&
-      data.currentMemberId !== authenticatedMember.id
+      currentMember &&
+      data.currentMemberId !== currentMember.id
     ) {
-      actions.setCurrentMember(authenticatedMember.id);
+      actions.setCurrentMember(currentMember.id);
     }
-  }, [actions, authenticatedMember, data.currentMemberId]);
+  }, [actions, currentMember, data.currentMemberId]);
 
   function updateForm<K extends keyof PlaceFormState>(
     key: K,
@@ -410,11 +408,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
               members={data.members}
               currentMember={currentMember}
               onEdit={() => startEditing(ranking.place)}
-              onDelete={() => {
-                if (window.confirm(`删除地点「${ranking.place.name}」？`)) {
-                  actions.deletePlace(ranking.place.id);
-                }
-              }}
+              onDelete={() => setPendingDeletePlace(ranking.place)}
               onVote={() => setVotingPlaceId(ranking.place.id)}
             />
           ))}
@@ -539,6 +533,18 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
           }}
         />
       ) : null}
+
+      <DeletePlaceConfirmModal
+        place={pendingDeletePlace}
+        onClose={() => setPendingDeletePlace(null)}
+        onConfirm={() => {
+          if (pendingDeletePlace) {
+            actions.deletePlace(pendingDeletePlace.id);
+          }
+
+          setPendingDeletePlace(null);
+        }}
+      />
     </main>
   );
 }
@@ -776,6 +782,40 @@ function PlaceVoteModal({
             ))}
           </div>
         ) : null}
+      </div>
+    </Modal>
+  );
+}
+
+function DeletePlaceConfirmModal({
+  place,
+  onClose,
+  onConfirm
+}: {
+  place: TravelPlace | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      open={Boolean(place)}
+      title="删除地点"
+      description={place?.name ?? ""}
+      onClose={onClose}
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[1rem] border border-coral/20 bg-secondary p-4 text-sm leading-6 text-muted-foreground">
+          删除后，这个地点的投票和关联信息会一起移除，此操作无法撤销。
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" onClick={onConfirm}>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            确认删除
+          </Button>
+        </div>
       </div>
     </Modal>
   );

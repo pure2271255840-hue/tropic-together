@@ -7,6 +7,7 @@ import {
   canDeleteTrip,
   requireReadableTrip
 } from "@/features/trip/server-authorization";
+import { decodeRouteParam } from "@/features/trip/route-params";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const { tripId } = await context.params;
+    const { tripId: routeTripId } = await context.params;
+    const tripId = decodeRouteParam(routeTripId);
     const result = await requireReadableTrip(tripId, user);
 
     if (!result.ok) {
@@ -54,7 +56,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const { tripId } = await context.params;
+    const { tripId: routeTripId } = await context.params;
+    const tripId = decodeRouteParam(routeTripId);
     const result = await requireReadableTrip(tripId, user);
 
     if (!result.ok) {

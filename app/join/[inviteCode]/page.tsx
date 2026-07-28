@@ -1,4 +1,5 @@
 import { JoinInvitePage } from "@/components/trip/me/join-invite-page";
+import { decodeRouteParam } from "@/features/trip/route-params";
 
 export const dynamic = "force-dynamic";
 
@@ -9,5 +10,5 @@ export default async function JoinInviteRoute({
 }) {
   const { inviteCode } = await params;
 
-  return <JoinInvitePage inviteCode={inviteCode} />;
+  return <JoinInvitePage inviteCode={decodeRouteParam(inviteCode)} />;
 }

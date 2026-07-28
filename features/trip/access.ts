@@ -9,7 +9,7 @@ export function tripMemberBelongsToUser(
     return false;
   }
 
-  return member.appUserId === user.id;
+  return member.appUserId === user.id || member.id === `member-${user.id}`;
 }
 
 export function getTripMemberForUser(
