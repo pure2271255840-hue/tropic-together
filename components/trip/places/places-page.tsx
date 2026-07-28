@@ -438,8 +438,10 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             value={form.name}
             onChange={(event) => updateForm("name", event.target.value)}
           />
-          <fieldset className="grid gap-2">
-            <legend className="text-sm font-medium">地点标签</legend>
+          <fieldset className="grid gap-2.5">
+            <legend className="px-1 text-xs font-medium text-muted-foreground">
+              地点标签
+            </legend>
             <div className="flex flex-wrap gap-2">
               {placeCategoryOptions.map((category) => (
                 <TagButton
@@ -452,26 +454,19 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
                   }}
                 />
               ))}
-              <TagButton
+              <CustomCategoryChip
                 active={form.category === customCategoryValue}
-                label="自定义"
-                onClick={() => updateForm("category", customCategoryValue)}
+                value={form.customCategory}
+                onActivate={() => updateForm("category", customCategoryValue)}
+                onChange={(value) => updateForm("customCategory", value)}
               />
             </div>
-            {form.category === customCategoryValue ? (
-              <input
-                className="field-control"
-                placeholder="手打标签名称"
-                value={form.customCategory}
-                onChange={(event) =>
-                  updateForm("customCategory", event.target.value)
-                }
-              />
-            ) : null}
           </fieldset>
-          <fieldset className="grid gap-2">
-            <legend className="text-sm font-medium">初始感觉</legend>
-            <div className="grid grid-cols-2 gap-2">
+          <fieldset className="grid gap-2.5">
+            <legend className="px-1 text-xs font-medium text-muted-foreground">
+              初始感觉
+            </legend>
+            <div className="flex flex-wrap gap-2">
               <OpinionTagButton
                 active={form.initialTag === "must_go"}
                 label="一定要去"
@@ -786,15 +781,51 @@ function TagButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       className={cn(
-        "focus-ring h-11 rounded-lg border px-3 text-sm font-medium transition",
+        "focus-ring inline-flex h-9 items-center rounded-full border px-3 text-sm font-medium leading-none transition",
         active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-white text-foreground hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
+          ? "border-teal/25 bg-accent text-accent-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
+          : "border-border/80 bg-white/80 text-muted-foreground hover:border-teal/25 hover:bg-accent/55 hover:text-accent-foreground"
       )}
       onClick={onClick}
     >
       {label}
+    </button>
+  );
+}
+
+function CustomCategoryChip({
+  active,
+  value,
+  onActivate,
+  onChange
+}: {
+  active: boolean;
+  value: string;
+  onActivate: () => void;
+  onChange: (value: string) => void;
+}) {
+  if (active) {
+    return (
+      <input
+        autoFocus
+        className="focus-ring h-9 w-28 rounded-full border border-teal/30 bg-white px-3 text-sm font-medium text-foreground shadow-[inset_0_1px_0_rgba(23,23,23,0.03)] placeholder:text-muted-foreground/55"
+        placeholder="标签名"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="focus-ring inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed border-border/90 bg-white/70 px-3 text-sm font-medium leading-none text-muted-foreground transition hover:border-teal/30 hover:bg-accent/45 hover:text-accent-foreground"
+      onClick={onActivate}
+    >
+      自定义
+      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
     </button>
   );
 }
@@ -811,11 +842,12 @@ function OpinionTagButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       className={cn(
-        "focus-ring min-h-11 rounded-full border px-4 text-sm font-semibold transition",
+        "focus-ring inline-flex h-9 items-center rounded-full border px-3.5 text-sm font-medium leading-none transition",
         active
-          ? "border-primary bg-primary text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.16)]"
-          : "border-border bg-white text-muted-foreground hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
+          ? "border-primary/20 bg-secondary text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
+          : "border-border/80 bg-white/80 text-muted-foreground hover:border-primary/25 hover:bg-secondary/55 hover:text-primary"
       )}
       onClick={onClick}
     >
