@@ -177,7 +177,7 @@ export function MePage({ tripId }: MePageProps) {
             <form className="mt-4 grid gap-3" onSubmit={openJoinNicknameModal}>
               <input
                 className="field-control uppercase"
-                placeholder="邀请码或邀请链接"
+                placeholder="邀请码"
                 value={inviteCode}
                 onChange={(event) =>
                   setInviteCode(normalizeInviteCode(event.target.value))

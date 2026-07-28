@@ -545,7 +545,7 @@ function buildHomeReminder(
         ? `${formatDateLabel(day.date)} / ${day.title}`
         : `${formatDateLabel(data.trip.startDate)} 开始`,
       description: day
-        ? dayDescription(day, "行程还未到开始日期。")
+        ? dayDescription(day)
         : `${data.trip.name} 将在 ${data.trip.startDate} 开始。`,
       day
     };

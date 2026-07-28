@@ -254,6 +254,10 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   }
 
   function startEditing(place: TravelPlace) {
+    if (!canManagePlace(place, currentMember)) {
+      return;
+    }
+
     setEditingPlaceId(place.id);
     setForm(placeToForm(place));
     setShowPlaceModal(true);
@@ -414,8 +418,13 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
               ranking={ranking}
               members={data.members}
               currentMember={currentMember}
+              canManage={canManagePlace(ranking.place, currentMember)}
               onEdit={() => startEditing(ranking.place)}
-              onDelete={() => setPendingDeletePlace(ranking.place)}
+              onDelete={() => {
+                if (canManagePlace(ranking.place, currentMember)) {
+                  setPendingDeletePlace(ranking.place);
+                }
+              }}
               onVote={() => setVotingPlaceId(ranking.place.id)}
             />
           ))}
@@ -545,7 +554,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
         place={pendingDeletePlace}
         onClose={() => setPendingDeletePlace(null)}
         onConfirm={() => {
-          if (pendingDeletePlace) {
+          if (pendingDeletePlace && canManagePlace(pendingDeletePlace, currentMember)) {
             actions.deletePlace(pendingDeletePlace.id);
           }
 
@@ -579,7 +588,7 @@ function TripGroupPlaceCard({
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2 text-center">
         <SmallStat label="地点" value={`${group.placeCount}`} />
-        <SmallStat label="参与者" value={`${group.members?.length ?? 0}`} />
+        <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
       </div>
       <MemberList members={group.members ?? []} />
       <Button type="button" className="mt-4 w-full" onClick={onOpen}>
@@ -593,6 +602,7 @@ function PlaceCard({
   ranking,
   members,
   currentMember,
+  canManage,
   onEdit,
   onDelete,
   onVote
@@ -600,6 +610,7 @@ function PlaceCard({
   ranking: RankedPlace;
   members: TripMember[];
   currentMember: TripMember;
+  canManage: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onVote: () => void;
@@ -635,17 +646,19 @@ function PlaceCard({
           >
             {ownerOpinion}
           </Badge>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="地点操作"
-            onClick={() => setIsMenuOpen((current) => !current)}
-          >
-            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          {isMenuOpen ? (
+          {canManage ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="地点操作"
+              onClick={() => setIsMenuOpen((current) => !current)}
+            >
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+          {canManage && isMenuOpen ? (
             <div className="absolute right-0 top-10 z-20 w-32 rounded-[1rem] border border-border bg-white p-1 shadow-lift">
               <button
                 type="button"
@@ -940,7 +953,11 @@ function MemberList({ members }: { members: TripMember[] }) {
 }
 
 function memberName(members: TripMember[], memberId: string) {
-  return members.find((member) => member.id === memberId)?.displayName ?? "参与者";
+  return members.find((member) => member.id === memberId)?.displayName ?? "成员";
+}
+
+function canManagePlace(place: TravelPlace, currentMember: TripMember) {
+  return currentMember.role === "owner" || place.addedByMemberId === currentMember.id;
 }
 
 function placeMetaText(place: TravelPlace) {

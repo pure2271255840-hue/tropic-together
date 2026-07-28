@@ -239,12 +239,8 @@ export function ItineraryPage({
   useEffect(() => {
     setSelectedTripId(initialSelectedTripId);
   }, [initialSelectedTripId, tripId]);
-  const itemTimeRangeError = timeRangeErrorFor(
-    itemForm.startTime,
-    itemForm.endTime
-  );
   const itemTimeConflicts = useMemo(() => {
-    if (!activeVersion || !selectedDayId || itemTimeRangeError) {
+    if (!activeVersion || !selectedDayId) {
       return [];
     }
 
@@ -256,15 +252,12 @@ export function ItineraryPage({
 
     return conflictingItineraryItems(day.items, {
       id: editingItem?.id,
-      startTime: itemForm.startTime,
-      endTime: itemForm.endTime
+      startTime: itemForm.startTime
     });
   }, [
     activeVersion,
     editingItem?.id,
-    itemForm.endTime,
     itemForm.startTime,
-    itemTimeRangeError,
     selectedDayId
   ]);
 
@@ -496,8 +489,7 @@ export function ItineraryPage({
     if (
       !activeVersion ||
       !selectedDayId ||
-      !itemForm.title.trim() ||
-      itemTimeRangeError
+      !itemForm.title.trim()
     ) {
       return;
     }
@@ -726,7 +718,7 @@ export function ItineraryPage({
           <Modal
             open={showAddItemModal}
             title={editingItem ? "编辑活动" : "添加活动"}
-            description="活动可以来自 AI 草稿，也可以由参与者手动调整。"
+            description="活动可以来自 AI 草稿，也可以由成员手动调整。"
             onClose={() => {
               setEditingItem(null);
               setShowAddItemModal(false);
@@ -769,12 +761,6 @@ export function ItineraryPage({
                   </div>
                 </fieldset>
               </div>
-              {itemTimeRangeError ? (
-                <p className="flex items-center gap-2 rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
-                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {itemTimeRangeError}
-                </p>
-              ) : null}
               {itemTimeConflicts.length > 0 ? (
                 <div className="rounded-lg border border-sunset/20 bg-sunset/10 px-3 py-2 text-sm leading-6 text-sunset">
                   <p className="flex items-center gap-2 font-medium">
@@ -787,7 +773,7 @@ export function ItineraryPage({
                   <div className="mt-1 space-y-1 text-muted-foreground">
                     {itemTimeConflicts.map((item) => (
                       <p key={item.id}>
-                        与「{item.title}」{formatItemTimeRange(item)} 重叠。
+                        开始时间与「{item.title}」{formatItemTimeRange(item)} 冲突。
                       </p>
                     ))}
                   </div>
@@ -811,7 +797,7 @@ export function ItineraryPage({
               </label>
               <Button
                 type="submit"
-                disabled={!itemForm.title.trim() || Boolean(itemTimeRangeError)}
+                disabled={!itemForm.title.trim()}
               >
                 {editingItem ? "保存修改" : "添加活动"}
               </Button>
@@ -1133,7 +1119,7 @@ function TripGroupList({
           <div className="surface-card-muted text-center">
             <p className="text-base font-semibold">还没有行程数据</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              先发起一个新行程，邀请同行参与者加入后一起收集地点和确认行程。
+              先发起一个新行程，邀请同行成员加入后一起收集地点和确认行程。
             </p>
             <div className="mt-4 flex justify-center">
               <Button type="button" variant="outline" onClick={onCreateTrip}>
@@ -1317,7 +1303,7 @@ function TripGroupCard({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-        <SmallStat label="参与者" value={`${group.members?.length ?? 0}`} />
+        <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
         <SmallStat label="地点" value={`${group.placeCount}`} />
       </div>
       <MemberList members={group.members ?? []} />
@@ -1585,7 +1571,7 @@ function ItineraryDetail({
                 生成于 {formatDateTime(version.createdAt)}
               </p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                活动是可编辑草稿，参与者可以手动调整。
+                活动是可编辑草稿，成员可以手动调整。
               </p>
               <HotelLocationLine
                 address={hotelAddress}
@@ -1633,35 +1619,22 @@ function ItineraryDetail({
         </div>
       </section>
 
-      <section className="flex flex-wrap justify-end gap-2">
-        {isOwner ? (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-full"
-              disabled={isOrganizingWithAi}
-              isLoading={isOrganizingWithAi}
-              onClick={onOrganizeWithAi}
-            >
-              {!isOrganizingWithAi ? (
-                <Sparkles className="h-4 w-4" aria-hidden="true" />
-              ) : null}
-              {isOrganizingWithAi ? "整理中" : "AI 整理行程"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-full"
-              onClick={onManageItinerary}
-            >
-              <CalendarDays className="h-4 w-4" aria-hidden="true" />
-              管理行程
-            </Button>
-          </>
-        ) : (
+      {isOwner ? (
+        <section className="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="rounded-full"
+            disabled={isOrganizingWithAi}
+            isLoading={isOrganizingWithAi}
+            onClick={onOrganizeWithAi}
+          >
+            {!isOrganizingWithAi ? (
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+            ) : null}
+            {isOrganizingWithAi ? "整理中" : "AI 整理行程"}
+          </Button>
           <Button
             type="button"
             size="sm"
@@ -1670,10 +1643,10 @@ function ItineraryDetail({
             onClick={onManageItinerary}
           >
             <CalendarDays className="h-4 w-4" aria-hidden="true" />
-            添加行程日
+            管理行程
           </Button>
-        )}
-      </section>
+        </section>
+      ) : null}
       {aiError ? (
         <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
           {aiError}
@@ -1686,6 +1659,7 @@ function ItineraryDetail({
         hotelAddress={hotelAddress}
         hotelMapUrl={hotelMapUrl}
         currentMember={currentMember}
+        members={members}
         isOwner={isOwner}
         canEdit
         onAddItem={onAddItem}
@@ -1726,6 +1700,7 @@ function Timeline({
   hotelAddress,
   hotelMapUrl,
   currentMember,
+  members,
   isOwner,
   canEdit,
   onAddItem,
@@ -1738,6 +1713,7 @@ function Timeline({
   hotelAddress?: string;
   hotelMapUrl?: string;
   currentMember: TripMember;
+  members: TripMember[];
   isOwner: boolean;
   canEdit: boolean;
   onAddItem: (dayId?: string) => void;
@@ -1808,6 +1784,7 @@ function Timeline({
                     key={item.id}
                     item={item}
                     place={item.placeId ? placeById.get(item.placeId) : undefined}
+                    members={members}
                     canManage={canManageItineraryItem(
                       item,
                       currentMember,
@@ -1835,6 +1812,7 @@ function Timeline({
 function TimelineItem({
   item,
   place,
+  members,
   canManage,
   hasTimeConflict,
   onEditActivity,
@@ -1843,6 +1821,7 @@ function TimelineItem({
 }: {
   item: ItineraryItem;
   place?: TravelPlace;
+  members: TripMember[];
   canManage: boolean;
   hasTimeConflict: boolean;
   onEditActivity: (item: ItineraryItem) => void;
@@ -1852,6 +1831,7 @@ function TimelineItem({
   const LockIcon = item.isLocked ? Lock : Unlock;
   const lockStateLabel = item.isLocked ? "已锁定" : "可编辑";
   const canEditUnlocked = canManage && !item.isLocked;
+  const proposalLabel = itineraryItemProposalLabel(item, place, members);
 
   return (
     <div className="relative pb-5 last:pb-0">
@@ -1861,37 +1841,36 @@ function TimelineItem({
           {item.startTime || "--:--"} - {item.endTime || "--:--"}
         </p>
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold leading-6">{item.title}</h3>
-            {hasTimeConflict ? (
-              <Badge tone="coral" className="gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-                时间冲突
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className="font-semibold leading-6">{item.title}</h3>
+              <Badge tone={proposalLabel === "AI 建议" ? "coral" : "outline"}>
+                {proposalLabel}
               </Badge>
+              {hasTimeConflict ? (
+                <Badge tone="coral" className="gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                  时间冲突
+                </Badge>
+              ) : null}
+            </div>
+            {canEditUnlocked ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-coral hover:text-coral"
+                aria-label="删除活动"
+                title="删除活动"
+                onClick={() => onDeleteActivity(item)}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
             ) : null}
           </div>
-          {place ? (
-            <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4" aria-hidden="true" />
-              {place.name}
-            </p>
-          ) : null}
-          {item.notes ? (
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {item.notes}
-            </p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {place ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {canManage ? (
               <>
-                <ExternalNavLink href={appleMapsDirectionsUrl(place)} label="Apple" />
-                <ExternalNavLink href={googleMapsDirectionsUrl(place)} label="Google" />
-              </>
-            ) : null}
-          </div>
-          {canManage ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
-              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -1914,32 +1893,36 @@ function TimelineItem({
                 ) : (
                   <Badge tone="teal">{lockStateLabel}</Badge>
                 )}
-              </div>
-              {canEditUnlocked ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 text-coral hover:text-coral"
-                  aria-label="删除活动"
-                  title="删除活动"
-                  onClick={() => onDeleteActivity(item)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              ) : null}
-            </div>
-          ) : (
-            <div className="mt-3 flex items-center gap-2 border-t border-border/70 pt-3">
-              <LockIcon
-                className="h-4 w-4 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Badge tone={item.isLocked ? "teal" : "outline"}>
-                {lockStateLabel}
-              </Badge>
-            </div>
-          )}
+              </>
+            ) : (
+              <span
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-white/85 text-muted-foreground"
+                title={lockStateLabel}
+                aria-label={lockStateLabel}
+              >
+                <LockIcon className="h-4 w-4" aria-hidden="true" />
+              </span>
+            )}
+          </div>
+          {place ? (
+            <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="h-4 w-4" aria-hidden="true" />
+              {place.name}
+            </p>
+          ) : null}
+          {item.notes ? (
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {item.notes}
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {place ? (
+              <>
+                <ExternalNavLink href={appleMapsDirectionsUrl(place)} label="Apple" />
+                <ExternalNavLink href={googleMapsDirectionsUrl(place)} label="Google" />
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -2582,7 +2565,6 @@ function ExternalNavLink({ href, label }: { href: string; label: string }) {
 type TimeRangeCandidate = {
   id?: string;
   startTime: string;
-  endTime: string;
 };
 
 function timeToMinutes(value: string) {
@@ -2602,7 +2584,7 @@ function timeToMinutes(value: string) {
   return hours * 60 + minutes;
 }
 
-function timeRangeFor(item: TimeRangeCandidate) {
+function sameDayTimeRangeFor(item: Pick<ItineraryItem, "startTime" | "endTime">) {
   const start = timeToMinutes(item.startTime);
   const end = timeToMinutes(item.endTime);
 
@@ -2613,30 +2595,13 @@ function timeRangeFor(item: TimeRangeCandidate) {
   return { start, end };
 }
 
-function timeRangeErrorFor(startTime: string, endTime: string) {
-  if (!startTime || !endTime) {
-    return undefined;
-  }
-
-  return timeRangeFor({ startTime, endTime })
-    ? undefined
-    : "结束时间需要晚于开始时间。";
-}
-
-function timeRangesOverlap(
-  left: { start: number; end: number },
-  right: { start: number; end: number }
-) {
-  return left.start < right.end && right.start < left.end;
-}
-
 function conflictingItineraryItems(
   items: ItineraryItem[],
   candidate: TimeRangeCandidate
 ) {
-  const candidateRange = timeRangeFor(candidate);
+  const candidateStart = timeToMinutes(candidate.startTime);
 
-  if (!candidateRange) {
+  if (candidateStart === undefined) {
     return [];
   }
 
@@ -2645,29 +2610,24 @@ function conflictingItineraryItems(
       return false;
     }
 
-    const itemRange = timeRangeFor(item);
+    const itemRange = sameDayTimeRangeFor(item);
 
-    return itemRange ? timeRangesOverlap(candidateRange, itemRange) : false;
+    return itemRange
+      ? itemRange.start <= candidateStart && candidateStart < itemRange.end
+      : false;
   });
 }
 
 function itineraryTimeConflictIds(items: ItineraryItem[]) {
   const conflictIds = new Set<string>();
 
-  items.forEach((item, index) => {
-    const itemRange = timeRangeFor(item);
-
-    if (!itemRange) {
-      return;
-    }
-
-    items.slice(index + 1).forEach((nextItem) => {
-      const nextRange = timeRangeFor(nextItem);
-
-      if (nextRange && timeRangesOverlap(itemRange, nextRange)) {
-        conflictIds.add(item.id);
-        conflictIds.add(nextItem.id);
-      }
+  items.forEach((item) => {
+    conflictingItineraryItems(items, {
+      id: item.id,
+      startTime: item.startTime
+    }).forEach((conflict) => {
+      conflictIds.add(item.id);
+      conflictIds.add(conflict.id);
     });
   });
 
@@ -2676,6 +2636,26 @@ function itineraryTimeConflictIds(items: ItineraryItem[]) {
 
 function formatItemTimeRange(item: ItineraryItem) {
   return `${item.startTime || "--:--"} - ${item.endTime || "--:--"}`;
+}
+
+function itineraryItemProposalLabel(
+  item: ItineraryItem,
+  place: TravelPlace | undefined,
+  members: TripMember[]
+) {
+  if (place?.addedByMemberId) {
+    return `${memberName(members, place.addedByMemberId)}提议`;
+  }
+
+  if (item.id.startsWith("item-ai")) {
+    return "AI 建议";
+  }
+
+  const name = item.createdByMemberId
+    ? memberName(members, item.createdByMemberId)
+    : "成员";
+
+  return `${name}提议`;
 }
 
 function itemToForm(item: ItineraryItem): ItemFormState {
@@ -2745,7 +2725,7 @@ function formatDateTime(value: string) {
 }
 
 function memberName(members: TripMember[], memberId: string) {
-  return members.find((member) => member.id === memberId)?.displayName ?? "参与者";
+  return members.find((member) => member.id === memberId)?.displayName ?? "成员";
 }
 
 function canManageItineraryItem(

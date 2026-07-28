@@ -514,38 +514,46 @@ export function updateItineraryItemInTrip(
 
   next.itineraryVersions = next.itineraryVersions.map((version) =>
     version.id === input.versionId
-      ? {
-          ...version,
-          updatedAt: timestamp,
-          days: version.days.map((day) => {
-            const itemsWithoutCurrent = day.items.filter(
-              (item) => item.id !== input.itemId
-            );
+      ? (() => {
+          const currentItem = version.days
+            .flatMap((day) => day.items)
+            .find((item) => item.id === input.itemId);
 
-            if (day.id !== input.dayId) {
-              return { ...day, items: itemsWithoutCurrent };
-            }
+          return {
+            ...version,
+            updatedAt: timestamp,
+            days: version.days.map((day) => {
+              const itemsWithoutCurrent = day.items.filter(
+                (item) => item.id !== input.itemId
+              );
 
-            return {
-              ...day,
-              items: [
-                ...itemsWithoutCurrent,
-                {
-                  id: input.itemId,
-                  dayId: input.dayId,
-                  title: input.title.trim(),
-                  placeId: input.placeId || undefined,
-                  startTime: input.startTime.trim(),
-                  endTime: input.endTime.trim(),
-                  notes: input.notes.trim(),
-                  isLocked: input.isLocked
-                }
-              ].sort((left, right) =>
-                left.startTime.localeCompare(right.startTime)
-              )
-            };
-          })
-        }
+              if (day.id !== input.dayId) {
+                return { ...day, items: itemsWithoutCurrent };
+              }
+
+              return {
+                ...day,
+                items: [
+                  ...itemsWithoutCurrent,
+                  {
+                    id: input.itemId,
+                    dayId: input.dayId,
+                    createdByMemberId:
+                      currentItem?.createdByMemberId ?? next.currentMemberId,
+                    title: input.title.trim(),
+                    placeId: input.placeId || undefined,
+                    startTime: input.startTime.trim(),
+                    endTime: input.endTime.trim(),
+                    notes: input.notes.trim(),
+                    isLocked: input.isLocked
+                  }
+                ].sort((left, right) =>
+                  left.startTime.localeCompare(right.startTime)
+                )
+              };
+            })
+          };
+      })()
       : version
   );
   next.updatedAt = timestamp;
