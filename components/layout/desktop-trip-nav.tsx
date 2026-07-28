@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, Home, MapPin, Plane, UserRound } from "lucide-react";
 import { usePendingItineraryTripCount } from "@/features/trip/use-pending-itinerary-trip-count";
+import { usePendingPlaceVoteCount } from "@/features/trip/use-pending-place-vote-count";
 import { cn } from "@/lib/utils";
 
 function tripInfoFromPath(pathname: string) {
@@ -22,6 +23,7 @@ export function DesktopTripNav() {
   const pathname = usePathname();
   const { tripId, tripBase } = tripInfoFromPath(pathname);
   const pendingItineraryCount = usePendingItineraryTripCount(tripId);
+  const pendingPlaceVoteCount = usePendingPlaceVoteCount(tripId);
   const navItems = [
     { label: "首页", href: tripBase, icon: Home, ready: true, badge: 0 },
     {
@@ -31,7 +33,13 @@ export function DesktopTripNav() {
       ready: true,
       badge: pendingItineraryCount
     },
-    { label: "地点", href: `${tripBase}/places`, icon: MapPin, ready: true, badge: 0 },
+    {
+      label: "地点",
+      href: `${tripBase}/places`,
+      icon: MapPin,
+      ready: true,
+      badge: pendingPlaceVoteCount
+    },
     { label: "我的", href: `${tripBase}/me`, icon: UserRound, ready: true, badge: 0 }
   ];
 

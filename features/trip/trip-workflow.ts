@@ -30,6 +30,13 @@ export function isTripManagedByUser(
   );
 }
 
+export function isTripForUser(
+  group: TripGroupSummary,
+  user: AuthUser | null
+) {
+  return group.members.some((member) => memberBelongsToUser(member, user));
+}
+
 export function isJoinedTripForUser(
   group: TripGroupSummary,
   user: AuthUser | null
@@ -37,6 +44,41 @@ export function isJoinedTripForUser(
   return group.members.some(
     (member) => member.role !== "owner" && memberBelongsToUser(member, user)
   );
+}
+
+export function getTripMemberForUser(
+  data: TripPhase1Data,
+  user: AuthUser | null
+) {
+  return (
+    data.members.find((member) => memberBelongsToUser(member, user)) ?? null
+  );
+}
+
+export function getPendingPlaceVoteCount(
+  data: TripPhase1Data,
+  user: AuthUser | null
+) {
+  if (
+    data.trip.phase === "final_confirmed" ||
+    data.trip.phase === "travel_active"
+  ) {
+    return 0;
+  }
+
+  const member = getTripMemberForUser(data, user);
+
+  if (!member) {
+    return 0;
+  }
+
+  const votedPlaceIds = new Set(
+    data.placeVotes
+      .filter((vote) => vote.memberId === member.id)
+      .map((vote) => vote.placeId)
+  );
+
+  return data.places.filter((place) => !votedPlaceIds.has(place.id)).length;
 }
 
 export function getCurrentItineraryVersion(

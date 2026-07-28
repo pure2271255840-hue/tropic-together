@@ -541,7 +541,15 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
           onAddItem={openAddItem}
           onOrganizeWithAi={() => void runAiAction("organize")}
           onOpenSettings={openTripSettingsModal}
-          onConfirmFinal={() => actions.confirmItineraryVersion(activeVersion.id)}
+          onConfirmFinal={() => {
+            if (
+              window.confirm(
+                "确认后，当前行程草稿会成为最终版；未投票地点不会阻止确认。确定要确认最终版吗？"
+              )
+            ) {
+              actions.confirmItineraryVersion(activeVersion.id);
+            }
+          }}
           onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
           onManageItinerary={() => setShowManageItineraryModal(true)}
           onManageDay={setManagedDayId}
