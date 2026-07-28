@@ -11,8 +11,7 @@ import {
   Plus,
   ThumbsDown,
   ThumbsUp,
-  Trash2,
-  Trophy
+  Trash2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +58,7 @@ type PlaceFormState = {
   name: string;
   city: string;
   category: string;
+  customCategory: string;
   initialTag: PlaceInitialTag;
   address: string;
   mapUrl: string;
@@ -72,7 +72,8 @@ type PlaceFormState = {
 const emptyForm: PlaceFormState = {
   name: "",
   city: "",
-  category: "经典",
+  category: "餐饮",
+  customCategory: "",
   initialTag: "nice_to_have",
   address: "",
   mapUrl: "",
@@ -88,13 +89,19 @@ const filters: Array<{ label: string; value: PlaceFilter }> = [
   { label: "排名", value: "ranking" }
 ];
 
-const placeCategoryOptions = ["经典", "餐饮", "咖啡", "自然", "购物", "交通"];
+const customCategoryValue = "__custom__";
+const placeCategoryOptions = ["餐饮", "酒吧", "购物", "景点"];
+
+function isPresetCategory(category: string) {
+  return placeCategoryOptions.includes(category);
+}
 
 function placeToForm(place: TravelPlace): PlaceFormState {
   return {
     name: place.name,
     city: place.city,
-    category: place.category,
+    category: isPresetCategory(place.category) ? place.category : customCategoryValue,
+    customCategory: isPresetCategory(place.category) ? "" : place.category,
     initialTag: place.initialTag,
     address: place.address,
     mapUrl: place.mapUrl ?? "",
@@ -110,11 +117,15 @@ function formToInput(form: PlaceFormState, fallbackCity: string): PlaceInput {
   const lat = form.lat.trim() ? Number(form.lat) : undefined;
   const lng = form.lng.trim() ? Number(form.lng) : undefined;
   const location = locationInputParts(form.location, form.address, form.mapUrl);
+  const category =
+    form.category === customCategoryValue
+      ? form.customCategory.trim()
+      : form.category;
 
   return {
     name: form.name,
     city: form.city.trim() || fallbackCity,
-    category: form.category || placeCategoryOptions[0],
+    category: category || placeCategoryOptions[0],
     initialTag: form.initialTag,
     address: location.address,
     mapUrl: location.mapUrl,
@@ -234,7 +245,10 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!form.name.trim()) {
+    if (
+      !form.name.trim() ||
+      (form.category === customCategoryValue && !form.customCategory.trim())
+    ) {
       return;
     }
 
@@ -410,7 +424,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
       <Modal
         open={showPlaceModal}
         title={editingPlaceId ? "编辑地点" : "添加地点"}
-        description="标签只给基础分，后续排序由大家想去/不想去决定。"
+        description="先选地点类型，再选你对它的初始感觉。"
         onClose={() => {
           setEditingPlaceId(null);
           setForm(emptyForm);
@@ -424,28 +438,52 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             value={form.name}
             onChange={(event) => updateForm("name", event.target.value)}
           />
-          <div className="flex flex-wrap gap-2">
-            {placeCategoryOptions.map((category) => (
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-medium">地点标签</legend>
+            <div className="flex flex-wrap gap-2">
+              {placeCategoryOptions.map((category) => (
+                <TagButton
+                  key={category}
+                  active={form.category === category}
+                  label={category}
+                  onClick={() => {
+                    updateForm("category", category);
+                    updateForm("customCategory", "");
+                  }}
+                />
+              ))}
               <TagButton
-                key={category}
-                active={form.category === category}
-                label={category}
-                onClick={() => updateForm("category", category)}
+                active={form.category === customCategoryValue}
+                label="自定义"
+                onClick={() => updateForm("category", customCategoryValue)}
               />
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <TinyTagButton
-              active={form.initialTag === "must_go"}
-              label="一定要去"
-              onClick={() => updateForm("initialTag", "must_go")}
-            />
-            <TinyTagButton
-              active={form.initialTag === "nice_to_have"}
-              label="还不错"
-              onClick={() => updateForm("initialTag", "nice_to_have")}
-            />
-          </div>
+            </div>
+            {form.category === customCategoryValue ? (
+              <input
+                className="field-control"
+                placeholder="手打标签名称"
+                value={form.customCategory}
+                onChange={(event) =>
+                  updateForm("customCategory", event.target.value)
+                }
+              />
+            ) : null}
+          </fieldset>
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-medium">初始感觉</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <OpinionTagButton
+                active={form.initialTag === "must_go"}
+                label="一定要去"
+                onClick={() => updateForm("initialTag", "must_go")}
+              />
+              <OpinionTagButton
+                active={form.initialTag === "nice_to_have"}
+                label="还不错"
+                onClick={() => updateForm("initialTag", "nice_to_have")}
+              />
+            </div>
+          </fieldset>
           <input
             className="field-control"
             placeholder="预计停留时间"
@@ -466,7 +504,10 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
           />
           <Button
             type="submit"
-            disabled={!form.name.trim()}
+            disabled={
+              !form.name.trim() ||
+              (form.category === customCategoryValue && !form.customCategory.trim())
+            }
           >
             {editingPlaceId ? "保存地点" : "添加地点"}
           </Button>
@@ -635,10 +676,6 @@ function PlaceCard({
             <ThumbsDown className="mr-1 h-3 w-3 text-coral" aria-hidden="true" />
             {placeVoteLabels.down} {ranking.downCount}
           </Badge>
-          <Badge tone="outline">
-            <Trophy className="mr-1 h-3 w-3" aria-hidden="true" />
-            {ranking.score} 分
-          </Badge>
         </div>
       </div>
 
@@ -762,7 +799,7 @@ function TagButton({
   );
 }
 
-function TinyTagButton({
+function OpinionTagButton({
   active,
   label,
   onClick
@@ -775,9 +812,9 @@ function TinyTagButton({
     <button
       type="button"
       className={cn(
-        "focus-ring h-8 rounded-lg border px-2.5 text-xs font-medium transition",
+        "focus-ring min-h-11 rounded-full border px-4 text-sm font-semibold transition",
         active
-          ? "border-primary bg-primary text-primary-foreground"
+          ? "border-primary bg-primary text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.16)]"
           : "border-border bg-white text-muted-foreground hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
       )}
       onClick={onClick}

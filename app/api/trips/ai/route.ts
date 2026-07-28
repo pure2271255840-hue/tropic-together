@@ -12,6 +12,10 @@ import type {
   TripPhase1Data
 } from "@/features/trip/types";
 import type { AiTripDraftRequest } from "@/features/trip/ai-types";
+import {
+  buildPlaceRankings,
+  placeInitialTagLabels
+} from "@/features/trip/trip-labels";
 
 export const runtime = "nodejs";
 
@@ -62,7 +66,17 @@ type PromptPayload = {
     name: string;
     city: string;
     category: string;
+    initialOpinion: string;
+    preferenceRank: number;
+    preferenceScore: number;
+    upVotes: number;
+    downVotes: number;
     address: string;
+    mapUrl?: string;
+    coordinate?: {
+      lat: number;
+      lng: number;
+    };
     notes: string;
     suggestedDuration: string;
     votes: Array<{
@@ -141,6 +155,8 @@ function buildPromptPayload(
   body: AiTripDraftRequest,
   currentVersion: ItineraryVersion | undefined
 ): PromptPayload {
+  const rankings = buildPlaceRankings(body.data.places, body.data.placeVotes);
+
   return {
     mode: body.mode,
     trip: {
@@ -151,15 +167,26 @@ function buildPromptPayload(
       destinations: body.data.trip.destinations,
       hotelAddress: body.data.trip.hotelAddress
     },
-    places: body.data.places.map((place) => ({
-      name: place.name,
-      city: place.city,
-      category: place.category,
-      address: place.address,
-      notes: place.notes,
-      suggestedDuration: place.suggestedDuration,
-      votes: placeVotesForPlace(place, body.data.placeVotes, body.data.members)
-    })),
+    places: rankings.map((ranking) => {
+      const place = ranking.place;
+
+      return {
+        name: place.name,
+        city: place.city,
+        category: place.category,
+        initialOpinion: placeInitialTagLabels[place.initialTag],
+        preferenceRank: ranking.rank,
+        preferenceScore: ranking.score,
+        upVotes: ranking.upCount,
+        downVotes: ranking.downCount,
+        address: place.address,
+        mapUrl: place.mapUrl,
+        coordinate: place.coordinate,
+        notes: place.notes,
+        suggestedDuration: place.suggestedDuration,
+        votes: placeVotesForPlace(place, body.data.placeVotes, body.data.members)
+      };
+    }),
     currentVersion: versionPayload(currentVersion, body.data.places)
   };
 }
@@ -187,6 +214,8 @@ function jsonInstruction() {
     "规则：",
     "- 结果只是可编辑草稿，不要声称已经确认最终版。",
     "- 优先使用 places 中已有地点，placeName 必须尽量与 places.name 完全一致。",
+    "- places 已按成员偏好粗排，preferenceScore/preferenceRank 只作为偏好参考，不要把分数当唯一排序依据。",
+    "- 安排活动时要根据 city、address、coordinate 和酒店地址把相近地点放在同一天或相邻时段，减少跨城折返和来回绕路；必要时可以为了路线顺畅牺牲少量偏好分。",
     "- 如果 mode 是 organize，要尊重 currentVersion 里 isLocked 为 true 的活动。",
     "- 不要编造票务、护照、预订号、联系方式或费用。",
     "- 日期必须在 startDate 和 endDate 范围内。",

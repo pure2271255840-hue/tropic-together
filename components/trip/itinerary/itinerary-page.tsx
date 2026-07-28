@@ -2351,14 +2351,7 @@ function PlacePicker({
                 <span className="min-w-0 font-medium leading-6">
                   {ranking.place.name}
                 </span>
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
-                    selected ? "bg-white/20" : "border border-teal/15 bg-accent text-accent-foreground"
-                  )}
-                >
-                  {ranking.score} 分
-                </span>
+                {selected ? <span className="shrink-0 text-xs">已选</span> : null}
               </div>
               {metaText ? (
                 <p
