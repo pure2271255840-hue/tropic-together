@@ -13,6 +13,7 @@ const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
 type AppUserRow = {
   id: string;
   username: string;
+  display_name?: string | null;
   password_hash: string;
   created_at: string;
 };
@@ -41,10 +42,21 @@ export function validatePassword(password: string) {
   return password.length >= 6 && password.length <= 72;
 }
 
+export function normalizeDisplayName(value: string) {
+  return value.trim();
+}
+
+export function validateDisplayName(displayName: string) {
+  return displayName.length >= 1 && displayName.length <= 24;
+}
+
 function toAuthUser(row: AppUserRow): AuthUser {
+  const displayName = normalizeDisplayName(row.display_name ?? "");
+
   return {
     id: row.id,
     username: row.username,
+    ...(displayName ? { displayName } : {}),
     createdAt: row.created_at
   };
 }
@@ -63,7 +75,7 @@ function hashToken(token: string) {
 export async function findUserByUsername(username: string) {
   const rows = await supabaseAdminRequest<AppUserRow[]>(
     "app_users",
-    `?select=id,username,password_hash,created_at&username=eq.${encodeFilterValue(
+    `?select=*&username=eq.${encodeFilterValue(
       username
     )}&limit=1`
   );
@@ -74,7 +86,7 @@ export async function findUserByUsername(username: string) {
 export async function findUserById(userId: string) {
   const rows = await supabaseAdminRequest<AppUserRow[]>(
     "app_users",
-    `?select=id,username,password_hash,created_at&id=eq.${encodeFilterValue(
+    `?select=*&id=eq.${encodeFilterValue(
       userId
     )}&limit=1`
   );
@@ -82,7 +94,11 @@ export async function findUserById(userId: string) {
   return rows[0] ? toUserWithPassword(rows[0]) : null;
 }
 
-export async function createUser(username: string, passwordHash: string) {
+export async function createUser(
+  username: string,
+  passwordHash: string,
+  displayName: string
+) {
   const rows = await supabaseAdminRequest<AppUserRow[]>(
     "app_users",
     "",
@@ -90,6 +106,7 @@ export async function createUser(username: string, passwordHash: string) {
       method: "POST",
       body: JSON.stringify({
         username,
+        display_name: normalizeDisplayName(displayName),
         password_hash: passwordHash
       })
     },
@@ -97,6 +114,27 @@ export async function createUser(username: string, passwordHash: string) {
   );
 
   return toAuthUser(rows[0]);
+}
+
+export async function updateUserDisplayName(
+  userId: string,
+  displayName: string
+) {
+  const normalizedDisplayName = normalizeDisplayName(displayName);
+  const rows = await supabaseAdminRequest<AppUserRow[]>(
+    "app_users",
+    `?id=eq.${encodeFilterValue(userId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        display_name: normalizedDisplayName || null,
+        updated_at: new Date().toISOString()
+      })
+    },
+    "return=representation"
+  );
+
+  return rows[0] ? toAuthUser(rows[0]) : null;
 }
 
 export async function createSession(userId: string) {
@@ -168,7 +206,14 @@ export async function getAuthenticatedUser(request: NextRequest) {
 
   const user = await findUserById(session.user_id);
 
-  return user ? { id: user.id, username: user.username, createdAt: user.createdAt } : null;
+  return user
+    ? {
+        id: user.id,
+        username: user.username,
+        ...(user.displayName ? { displayName: user.displayName } : {}),
+        createdAt: user.createdAt
+      }
+    : null;
 }
 
 export async function deleteSession(request: NextRequest) {

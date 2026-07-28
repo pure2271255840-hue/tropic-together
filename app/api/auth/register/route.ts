@@ -5,8 +5,10 @@ import {
   createSession,
   createUser,
   findUserByUsername,
+  normalizeDisplayName,
   normalizeUsername,
   setSessionCookie,
+  validateDisplayName,
   validatePassword,
   validateUsername
 } from "@/features/auth/server";
@@ -17,14 +19,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       username?: string;
+      displayName?: string;
       password?: string;
     };
     const username = normalizeUsername(body.username ?? "");
+    const displayName = normalizeDisplayName(body.displayName ?? "");
     const password = body.password ?? "";
 
     if (!validateUsername(username)) {
       return NextResponse.json(
         { message: "用户名只能包含小写字母、数字、下划线或连字符，长度 2-32 位。" },
+        { status: 400 }
+      );
+    }
+
+    if (!validateDisplayName(displayName)) {
+      return NextResponse.json(
+        { message: "账号昵称长度需要在 1-24 位之间。" },
         { status: 400 }
       );
     }
@@ -45,7 +56,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await createUser(username, await hashPassword(password));
+    const user = await createUser(
+      username,
+      await hashPassword(password),
+      displayName
+    );
     const session = await createSession(user.id);
     const response = NextResponse.json({ user });
 

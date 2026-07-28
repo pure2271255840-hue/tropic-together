@@ -1,14 +1,17 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Check,
   LogOut,
+  Pencil,
   Ticket,
   UserRound,
-  UsersRound
+  X
 } from "lucide-react";
 import { AuthCard } from "@/components/trip/me/auth-card";
+import { JoinNicknameModal } from "@/components/trip/me/join-nickname-modal";
 import { Button } from "@/components/ui/button";
 import { useAuthSession } from "@/features/auth/use-auth-session";
 import { setActiveTripMemberId } from "@/features/trip/active-member";
@@ -26,6 +29,63 @@ export function MePage({ tripId }: MePageProps) {
   const [displayName, setDisplayName] = useState("");
   const [joinError, setJoinError] = useState("");
   const [isJoining, setIsJoining] = useState(false);
+  const [showJoinNicknameModal, setShowJoinNicknameModal] = useState(false);
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  const [isEditingProfileName, setIsEditingProfileName] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const accountDisplayName = auth.user?.displayName || auth.user?.username || "";
+
+  useEffect(() => {
+    if (auth.user) {
+      setProfileDisplayName(auth.user.displayName || auth.user.username);
+      setProfileError("");
+      setIsEditingProfileName(false);
+    }
+  }, [auth.user]);
+
+  async function submitProfileName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!auth.user) {
+      return;
+    }
+
+    const nextDisplayName = profileDisplayName.trim();
+
+    if (!nextDisplayName || nextDisplayName.length > 24) {
+      setProfileError("账号昵称长度需要在 1-24 位之间。");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileError("");
+
+    try {
+      const updatedUser = await auth.updateDisplayName(nextDisplayName);
+
+      setProfileDisplayName(updatedUser?.displayName || nextDisplayName);
+      setIsEditingProfileName(false);
+    } catch (error) {
+      setProfileError(
+        error instanceof Error ? error.message : "暂时无法保存账号昵称。"
+      );
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }
+
+  function openJoinNicknameModal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!auth.user || !inviteCode.trim()) {
+      return;
+    }
+
+    setDisplayName("");
+    setJoinError("");
+    setShowJoinNicknameModal(true);
+  }
 
   async function submitJoin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,15 +123,88 @@ export function MePage({ tripId }: MePageProps) {
       ) : auth.user ? (
         <>
           <section className="corner-mark surface-card">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-start">
+              <div className="min-w-0 space-y-3">
                 <p className="text-sm font-medium text-muted-foreground">
                   当前账号
                 </p>
-                <h2 className="mt-2 flex items-center gap-2 text-xl font-semibold">
-                  <UserRound className="h-5 w-5 text-teal" aria-hidden="true" />
-                  {auth.user.username}
-                </h2>
+                {isEditingProfileName ? (
+                  <form className="grid gap-2" onSubmit={submitProfileName}>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        className="field-control sm:max-w-xs"
+                        autoComplete="nickname"
+                        maxLength={24}
+                        placeholder="账号昵称"
+                        value={profileDisplayName}
+                        onChange={(event) =>
+                          setProfileDisplayName(event.target.value)
+                        }
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={
+                            isSavingProfile || !profileDisplayName.trim()
+                          }
+                          isLoading={isSavingProfile}
+                        >
+                          {!isSavingProfile ? (
+                            <Check className="h-4 w-4" aria-hidden="true" />
+                          ) : null}
+                          保存
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={isSavingProfile}
+                          onClick={() => {
+                            setProfileDisplayName(accountDisplayName);
+                            setProfileError("");
+                            setIsEditingProfileName(false);
+                          }}
+                        >
+                          <X className="h-4 w-4" aria-hidden="true" />
+                          取消
+                        </Button>
+                      </div>
+                    </div>
+                    {profileError ? (
+                      <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
+                        {profileError}
+                      </p>
+                    ) : null}
+                  </form>
+                ) : (
+                  <div>
+                    <h2 className="flex items-center gap-2 text-xl font-semibold">
+                      <UserRound
+                        className="h-5 w-5 text-teal"
+                        aria-hidden="true"
+                      />
+                      {accountDisplayName}
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      登录账号：{auth.user.username}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 rounded-full"
+                      onClick={() => {
+                        setProfileDisplayName(accountDisplayName);
+                        setProfileError("");
+                        setIsEditingProfileName(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                      修改昵称
+                    </Button>
+                  </div>
+                )}
               </div>
               <Button
                 type="button"
@@ -93,7 +226,7 @@ export function MePage({ tripId }: MePageProps) {
               <Ticket className="h-4 w-4 text-teal" aria-hidden="true" />
               <h2 className="text-base font-semibold">加入行程</h2>
             </div>
-            <form className="mt-4 grid gap-3" onSubmit={submitJoin}>
+            <form className="mt-4 grid gap-3" onSubmit={openJoinNicknameModal}>
               <input
                 className="field-control uppercase"
                 placeholder="邀请码"
@@ -102,29 +235,29 @@ export function MePage({ tripId }: MePageProps) {
                   setInviteCode(normalizeInviteCode(event.target.value))
                 }
               />
-              <input
-                className="field-control"
-                placeholder="行程昵称，可选"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-              />
-              {joinError ? (
-                <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
-                  {joinError}
-                </p>
-              ) : null}
               <Button
                 type="submit"
                 disabled={!inviteCode.trim() || isJoining}
-                isLoading={isJoining}
               >
-                {!isJoining ? (
-                  <UsersRound className="h-4 w-4" aria-hidden="true" />
-                ) : null}
-                {isJoining ? "加入中" : "加入行程"}
+                加入行程
               </Button>
             </form>
           </section>
+          <JoinNicknameModal
+            open={showJoinNicknameModal}
+            accountDisplayName={accountDisplayName}
+            displayName={displayName}
+            error={joinError}
+            isJoining={isJoining}
+            onChange={setDisplayName}
+            onClose={() => {
+              if (!isJoining) {
+                setShowJoinNicknameModal(false);
+                setJoinError("");
+              }
+            }}
+            onSubmit={submitJoin}
+          />
         </>
       ) : (
         <AuthCard

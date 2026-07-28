@@ -51,7 +51,11 @@ export async function POST(request: NextRequest) {
       displayName?: string;
     };
     const inviteCode = normalizeInviteCode(body.inviteCode ?? "");
-    const displayName = (body.displayName?.trim() || user.username).trim();
+    const displayName = (
+      body.displayName?.trim() ||
+      user.displayName ||
+      user.username
+    ).trim();
 
     if (!inviteCode) {
       return NextResponse.json(

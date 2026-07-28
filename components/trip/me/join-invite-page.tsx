@@ -2,8 +2,9 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ticket, UsersRound } from "lucide-react";
+import { Ticket } from "lucide-react";
 import { AuthCard } from "@/components/trip/me/auth-card";
+import { JoinNicknameModal } from "@/components/trip/me/join-nickname-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuthSession } from "@/features/auth/use-auth-session";
@@ -25,6 +26,14 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
   const [displayName, setDisplayName] = useState("");
   const [joinError, setJoinError] = useState("");
   const [isJoining, setIsJoining] = useState(false);
+  const [showJoinNicknameModal, setShowJoinNicknameModal] = useState(false);
+  const accountDisplayName = auth.user?.displayName || auth.user?.username || "";
+
+  function openJoinNicknameModal() {
+    setDisplayName("");
+    setJoinError("");
+    setShowJoinNicknameModal(true);
+  }
 
   async function submitJoin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,27 +79,33 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
       ) : auth.user ? (
         <section className="surface-card">
           <p className="text-sm leading-6 text-muted-foreground">
-            当前账号：{auth.user.username}
+            当前账号：{accountDisplayName}
           </p>
-          <form className="mt-4 grid gap-3" onSubmit={submitJoin}>
-            <input
-              className="field-control"
-              placeholder="行程昵称，可选"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-            />
-            {joinError ? (
-              <p className="rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
-                {joinError}
-              </p>
-            ) : null}
-            <Button type="submit" disabled={isJoining} isLoading={isJoining}>
-              {!isJoining ? (
-                <UsersRound className="h-4 w-4" aria-hidden="true" />
-              ) : null}
-              {isJoining ? "加入中" : "加入行程"}
-            </Button>
-          </form>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            登录账号：{auth.user.username}
+          </p>
+          <Button
+            type="button"
+            className="mt-4"
+            onClick={openJoinNicknameModal}
+          >
+            加入行程
+          </Button>
+          <JoinNicknameModal
+            open={showJoinNicknameModal}
+            accountDisplayName={accountDisplayName}
+            displayName={displayName}
+            error={joinError}
+            isJoining={isJoining}
+            onChange={setDisplayName}
+            onClose={() => {
+              if (!isJoining) {
+                setShowJoinNicknameModal(false);
+                setJoinError("");
+              }
+            }}
+            onSubmit={submitJoin}
+          />
         </section>
       ) : (
         <AuthCard

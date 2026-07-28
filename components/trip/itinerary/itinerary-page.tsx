@@ -358,7 +358,7 @@ export function ItineraryPage({ tripId }: ItineraryPageProps) {
       const ownerMember: TripMember = {
         id: `member-${auth.user.id}`,
         appUserId: auth.user.id,
-        displayName: auth.user.username,
+        displayName: auth.user.displayName || auth.user.username,
         role: "owner",
         color: "teal"
       };

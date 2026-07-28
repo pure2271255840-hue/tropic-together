@@ -22,7 +22,12 @@ type AuthSessionContextValue = {
   isSubmitting: boolean;
   error: string;
   login: (username: string, password: string) => Promise<AuthUser | null>;
-  register: (username: string, password: string) => Promise<AuthUser | null>;
+  register: (
+    username: string,
+    password: string,
+    displayName: string
+  ) => Promise<AuthUser | null>;
+  updateDisplayName: (displayName: string) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -68,7 +73,12 @@ function useAuthSessionState(): AuthSessionContextValue {
   }, [refresh]);
 
   const runAuthAction = useCallback(
-    async (path: string, username: string, password: string) => {
+    async (
+      path: string,
+      username: string,
+      password: string,
+      extraBody: Record<string, string> = {}
+    ) => {
       setIsSubmitting(true);
       setError("");
 
@@ -77,7 +87,7 @@ function useAuthSessionState(): AuthSessionContextValue {
           await fetch(path, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username, password, ...extraBody })
           })
         );
 
@@ -103,10 +113,33 @@ function useAuthSessionState(): AuthSessionContextValue {
   );
 
   const register = useCallback(
-    (username: string, password: string) =>
-      runAuthAction("/api/auth/register", username, password),
+    (username: string, password: string, displayName: string) =>
+      runAuthAction("/api/auth/register", username, password, { displayName }),
     [runAuthAction]
   );
+
+  const updateDisplayName = useCallback(async (displayName: string) => {
+    setError("");
+
+    try {
+      const payload = await parseAuthResponse(
+        await fetch("/api/auth/me", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayName })
+        })
+      );
+
+      setUser(payload.user);
+      return payload.user;
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error ? nextError.message : "账号服务暂时不可用。";
+
+      setError(message);
+      throw nextError;
+    }
+  }, []);
 
   const logout = useCallback(async () => {
     setIsSubmitting(true);
@@ -132,10 +165,21 @@ function useAuthSessionState(): AuthSessionContextValue {
       error,
       login,
       register,
+      updateDisplayName,
       logout,
       refresh
     }),
-    [error, isLoading, isSubmitting, login, logout, refresh, register, user]
+    [
+      error,
+      isLoading,
+      isSubmitting,
+      login,
+      logout,
+      refresh,
+      register,
+      updateDisplayName,
+      user
+    ]
   );
 }
 

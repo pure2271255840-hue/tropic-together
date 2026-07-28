@@ -11,7 +11,11 @@ type AuthCardProps = {
   error: string;
   isSubmitting: boolean;
   onLogin: (username: string, password: string) => Promise<unknown>;
-  onRegister: (username: string, password: string) => Promise<unknown>;
+  onRegister: (
+    username: string,
+    password: string,
+    displayName: string
+  ) => Promise<unknown>;
 };
 
 export function AuthCard({
@@ -22,13 +26,20 @@ export function AuthCard({
 }: AuthCardProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const isRegistering = mode === "register";
+  const isSubmitDisabled =
+    !username.trim() ||
+    !password ||
+    (isRegistering && !displayName.trim()) ||
+    isSubmitting;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!username.trim() || !password) {
+    if (isSubmitDisabled) {
       return;
     }
 
@@ -36,7 +47,7 @@ export function AuthCard({
       if (mode === "login") {
         await onLogin(username, password);
       } else {
-        await onRegister(username, password);
+        await onRegister(username, password, displayName);
       }
     } catch {
       // The auth hook owns the visible error state.
@@ -59,12 +70,24 @@ export function AuthCard({
       </div>
 
       <form className="mt-4 grid gap-3" onSubmit={submit}>
+        {isRegistering ? (
+          <input
+            className="field-control"
+            id="auth-display-name"
+            name="displayName"
+            autoComplete="nickname"
+            maxLength={24}
+            placeholder="账号昵称"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+        ) : null}
         <input
           className="field-control"
           id="auth-username"
           name="username"
           autoComplete="username"
-          placeholder="用户名"
+          placeholder={isRegistering ? "登录账号" : "账号"}
           value={username}
           onChange={(event) => setUsername(event.target.value)}
         />
@@ -101,7 +124,7 @@ export function AuthCard({
         ) : null}
         <Button
           type="submit"
-          disabled={!username.trim() || !password || isSubmitting}
+          disabled={isSubmitDisabled}
           isLoading={isSubmitting}
         >
           {!isSubmitting && mode === "login" ? (
