@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -58,7 +59,11 @@ import {
   writeCachedTripGroups
 } from "@/features/trip/trip-group-cache";
 import { createSeedTripData } from "@/features/trip/seed-data";
-import { createInviteCode, invitePath } from "@/features/trip/invite-code";
+import {
+  createInviteCode,
+  invitePath,
+  normalizeInviteCode
+} from "@/features/trip/invite-code";
 import {
   isJoinedTripForUser,
   isTripManagedByUser
@@ -84,7 +89,10 @@ import type {
   TripGroupSummary,
   TripMember
 } from "@/features/trip/types";
-import { useLocalTripStore } from "@/features/trip/use-local-trip-store";
+import {
+  useTripDataStore,
+  type TripDataStore
+} from "@/features/trip/trip-data-provider";
 import { cn } from "@/lib/utils";
 
 type ItineraryPageProps = {
@@ -143,6 +151,7 @@ export function ItineraryPage({
   tripId,
   initialSelectedTripId = null
 }: ItineraryPageProps) {
+  const router = useRouter();
   const auth = useAuthSession();
   const [tripGroups, setTripGroups] = useState<TripGroupSummary[]>([]);
   const [isTripGroupsLoading, setIsTripGroupsLoading] = useState(true);
@@ -151,9 +160,6 @@ export function ItineraryPage({
   );
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [pendingDeleteDayId, setPendingDeleteDayId] = useState<string | null>(
-    null
-  );
   const [pendingDeleteItem, setPendingDeleteItem] =
     useState<ItineraryItem | null>(null);
   const [showManageItineraryModal, setShowManageItineraryModal] = useState(false);
@@ -182,8 +188,7 @@ export function ItineraryPage({
     endDate: "",
     hotelLocation: ""
   });
-  const workingTripId = selectedTripId ?? tripId;
-  const { data, isLoaded, actions } = useLocalTripStore(workingTripId);
+  const { data, isLoaded, actions } = useTripDataStore();
   const currentMember = resolveCurrentTripMember(data, auth.user);
   const isOwner = currentMember?.role === "owner";
   const placeById = useMemo(
@@ -204,10 +209,6 @@ export function ItineraryPage({
     activeVersion?.days.some((day) => day.id === itemForm.dayId)
       ? itemForm.dayId
       : firstDayId;
-  const pendingDeleteDay =
-    activeVersion && pendingDeleteDayId
-      ? activeVersion.days.find((day) => day.id === pendingDeleteDayId) ?? null
-      : null;
   const usedPlaceIdsByOtherItems = useMemo<Record<string, boolean>>(() => {
     const usedPlaceIds: Record<string, boolean> = {};
 
@@ -234,6 +235,10 @@ export function ItineraryPage({
       ),
     [itemForm.placeId, placeRankings, usedPlaceIdsByOtherItems]
   );
+
+  useEffect(() => {
+    setSelectedTripId(initialSelectedTripId);
+  }, [initialSelectedTripId, tripId]);
   const itemTimeRangeError = timeRangeErrorFor(
     itemForm.startTime,
     itemForm.endTime
@@ -311,10 +316,10 @@ export function ItineraryPage({
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent<TestAccountTripChangeDetail>(testAccountTripChangeEvent, {
-        detail: { tripId: workingTripId }
+        detail: { tripId }
       })
     );
-  }, [workingTripId]);
+  }, [tripId]);
 
   useEffect(() => {
     if (
@@ -326,11 +331,12 @@ export function ItineraryPage({
   }, [actions, currentMember, data.currentMemberId]);
 
   function openTripGroup(groupId: string) {
-    setSelectedTripId(groupId);
+    router.push(`/trip/${groupId}/itinerary?open=detail`);
   }
 
   function backToTripGroups() {
     setSelectedTripId(null);
+    router.replace(`/trip/${tripId}/itinerary`);
     void refreshTripGroups();
   }
 
@@ -435,8 +441,8 @@ export function ItineraryPage({
 
       setTripGroups(groups);
       writeCachedTripGroups(auth.user.id, groups);
-      setSelectedTripId(slug);
       setShowNewTripModal(false);
+      router.push(`/trip/${slug}/itinerary?open=detail`);
     } finally {
       setIsCreatingTrip(false);
     }
@@ -598,9 +604,11 @@ export function ItineraryPage({
           onConfirmFinal={() => setPendingConfirmFinalVersionId(activeVersion.id)}
           onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
           onManageItinerary={() => setShowManageItineraryModal(true)}
-          onDeleteDay={setPendingDeleteDayId}
           onEditActivity={(item) => {
-            if (!canManageItineraryItem(item, currentMember, isOwner)) {
+            if (
+              item.isLocked ||
+              !canManageItineraryItem(item, currentMember, isOwner)
+            ) {
               return;
             }
 
@@ -609,7 +617,10 @@ export function ItineraryPage({
             setShowAddItemModal(true);
           }}
           onDeleteActivity={(item) => {
-            if (canManageItineraryItem(item, currentMember, isOwner)) {
+            if (
+              !item.isLocked &&
+              canManageItineraryItem(item, currentMember, isOwner)
+            ) {
               setPendingDeleteItem(item);
             }
           }}
@@ -693,24 +704,6 @@ export function ItineraryPage({
             }
           />
 
-          <DeleteDaysConfirmModal
-            open={Boolean(pendingDeleteDay)}
-            days={pendingDeleteDay ? [pendingDeleteDay] : []}
-            onClose={() => setPendingDeleteDayId(null)}
-            onConfirm={() => {
-              if (
-                !pendingDeleteDay ||
-                !canDeleteItineraryDay(pendingDeleteDay, currentMember, isOwner)
-              ) {
-                setPendingDeleteDayId(null);
-                return;
-              }
-
-              actions.deleteItineraryDays(activeVersion.id, [pendingDeleteDay.id]);
-              setPendingDeleteDayId(null);
-            }}
-          />
-
           <DeleteItemConfirmModal
             open={Boolean(pendingDeleteItem)}
             item={pendingDeleteItem}
@@ -718,6 +711,7 @@ export function ItineraryPage({
             onConfirm={() => {
               if (
                 !pendingDeleteItem ||
+                pendingDeleteItem.isLocked ||
                 !canManageItineraryItem(pendingDeleteItem, currentMember, isOwner)
               ) {
                 setPendingDeleteItem(null);
@@ -732,7 +726,7 @@ export function ItineraryPage({
           <Modal
             open={showAddItemModal}
             title={editingItem ? "编辑活动" : "添加活动"}
-            description="活动可以来自 AI 草稿，也可以由成员手动调整。"
+            description="活动可以来自 AI 草稿，也可以由参与者手动调整。"
             onClose={() => {
               setEditingItem(null);
               setShowAddItemModal(false);
@@ -1139,7 +1133,7 @@ function TripGroupList({
           <div className="surface-card-muted text-center">
             <p className="text-base font-semibold">还没有行程数据</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              先发起一个新行程，邀请同行成员加入后一起收集地点和确认行程。
+              先发起一个新行程，邀请同行参与者加入后一起收集地点和确认行程。
             </p>
             <div className="mt-4 flex justify-center">
               <Button type="button" variant="outline" onClick={onCreateTrip}>
@@ -1210,10 +1204,17 @@ function TripGroupSection({
   );
 }
 
-function CopyInviteButton({ inviteUrl }: { inviteUrl: string }) {
+function CopyInviteButton({
+  inviteCode,
+  inviteUrl
+}: {
+  inviteCode?: string;
+  inviteUrl?: string;
+}) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle"
   );
+  const copyValue = normalizeInviteCode(inviteCode || inviteUrl || "");
 
   useEffect(() => {
     if (copyState === "idle") {
@@ -1232,8 +1233,9 @@ function CopyInviteButton({ inviteUrl }: { inviteUrl: string }) {
     <Button
       type="button"
       variant={isCopied ? "quiet" : "outline"}
+      disabled={!copyValue}
       onClick={async () => {
-        setCopyState((await copyText(inviteUrl)) ? "copied" : "failed");
+        setCopyState((await copyText(copyValue)) ? "copied" : "failed");
       }}
     >
       {isCopied ? (
@@ -1241,7 +1243,7 @@ function CopyInviteButton({ inviteUrl }: { inviteUrl: string }) {
       ) : (
         <Copy className="h-4 w-4" aria-hidden="true" />
       )}
-      {isCopied ? "已复制链接" : isFailed ? "复制失败" : "复制邀请"}
+      {isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
     </Button>
   );
 }
@@ -1315,7 +1317,7 @@ function TripGroupCard({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-        <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
+        <SmallStat label="参与者" value={`${group.members?.length ?? 0}`} />
         <SmallStat label="地点" value={`${group.placeCount}`} />
       </div>
       <MemberList members={group.members ?? []} />
@@ -1324,7 +1326,10 @@ function TripGroupCard({
         <Button type="button" onClick={() => onOpenTrip(group.id)}>
           进入行程
         </Button>
-        <CopyInviteButton inviteUrl={group.inviteUrl} />
+        <CopyInviteButton
+          inviteCode={group.inviteCode}
+          inviteUrl={group.inviteUrl}
+        />
         {canDelete ? (
           <Button
             type="button"
@@ -1353,7 +1358,7 @@ function TripGroupWorkspace({
   onOpenSettings,
   onGenerateAi
 }: {
-  data: ReturnType<typeof useLocalTripStore>["data"];
+  data: TripDataStore["data"];
   isOwner: boolean;
   isGeneratingWithAi: boolean;
   aiError?: string;
@@ -1404,7 +1409,10 @@ function TripGroupWorkspace({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <CopyInviteButton inviteUrl={data.trip.inviteUrl} />
+            <CopyInviteButton
+              inviteCode={data.trip.inviteCode}
+              inviteUrl={data.trip.inviteUrl}
+            />
             <Link
               className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
               href={`/trip/${data.trip.id}/places`}
@@ -1485,7 +1493,6 @@ function ItineraryDetail({
   onConfirmFinal,
   onCancelFinal,
   onManageItinerary,
-  onDeleteDay,
   onEditActivity,
   onDeleteActivity,
   onToggleActivityLocked
@@ -1514,7 +1521,6 @@ function ItineraryDetail({
   onConfirmFinal: () => void;
   onCancelFinal: () => void;
   onManageItinerary: () => void;
-  onDeleteDay: (dayId: string) => void;
   onEditActivity: (item: ItineraryItem) => void;
   onDeleteActivity: (item: ItineraryItem) => void;
   onToggleActivityLocked: (item: ItineraryItem) => void;
@@ -1579,7 +1585,7 @@ function ItineraryDetail({
                 生成于 {formatDateTime(version.createdAt)}
               </p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                活动是可编辑草稿，成员可以手动调整。
+                活动是可编辑草稿，参与者可以手动调整。
               </p>
               <HotelLocationLine
                 address={hotelAddress}
@@ -1683,7 +1689,6 @@ function ItineraryDetail({
         isOwner={isOwner}
         canEdit
         onAddItem={onAddItem}
-        onDeleteDay={onDeleteDay}
         onEditActivity={onEditActivity}
         onDeleteActivity={onDeleteActivity}
         onToggleActivityLocked={onToggleActivityLocked}
@@ -1724,7 +1729,6 @@ function Timeline({
   isOwner,
   canEdit,
   onAddItem,
-  onDeleteDay,
   onEditActivity,
   onDeleteActivity,
   onToggleActivityLocked
@@ -1737,7 +1741,6 @@ function Timeline({
   isOwner: boolean;
   canEdit: boolean;
   onAddItem: (dayId?: string) => void;
-  onDeleteDay: (dayId: string) => void;
   onEditActivity: (item: ItineraryItem) => void;
   onDeleteActivity: (item: ItineraryItem) => void;
   onToggleActivityLocked: (item: ItineraryItem) => void;
@@ -1745,11 +1748,6 @@ function Timeline({
   return (
     <section className="space-y-4">
       {version.days.map((day) => {
-        const canDeleteDay = canDeleteItineraryDay(
-          day,
-          currentMember,
-          isOwner
-        );
         const routePlan = routePlanForItineraryDay(
           day,
           placeById,
@@ -1794,19 +1792,6 @@ function Timeline({
                   >
                     <Plus className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                  {canDeleteDay ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 text-coral hover:text-coral"
-                      aria-label="删除当天"
-                      title="删除当天"
-                      onClick={() => onDeleteDay(day.id)}
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1866,6 +1851,7 @@ function TimelineItem({
 }) {
   const LockIcon = item.isLocked ? Lock : Unlock;
   const lockStateLabel = item.isLocked ? "已锁定" : "可编辑";
+  const canEditUnlocked = canManage && !item.isLocked;
 
   return (
     <div className="relative pb-5 last:pb-0">
@@ -1875,65 +1861,13 @@ function TimelineItem({
           {item.startTime || "--:--"} - {item.endTime || "--:--"}
         </p>
         <div className="min-w-0">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="font-semibold leading-6">{item.title}</h3>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {canManage ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8 rounded-full"
-                      aria-label={item.isLocked ? "解锁活动" : "锁定活动"}
-                      title={item.isLocked ? "解锁活动" : "锁定活动"}
-                      onClick={() => onToggleLocked(item)}
-                    >
-                      <LockIcon className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "focus-ring inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-xs font-medium transition hover:border-primary/25 hover:bg-secondary/55 hover:text-primary",
-                        "border-border bg-white/85 text-muted-foreground"
-                      )}
-                      onClick={() => onEditActivity(item)}
-                    >
-                      可编辑
-                    </button>
-                  </>
-                ) : (
-                  <span className="inline-flex items-center gap-2">
-                    <LockIcon
-                      className="h-4 w-4 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <Badge tone={item.isLocked ? "teal" : "outline"}>
-                      {lockStateLabel}
-                    </Badge>
-                  </span>
-                )}
-                {hasTimeConflict ? (
-                  <Badge tone="coral" className="gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-                    时间冲突
-                  </Badge>
-                ) : null}
-              </div>
-            </div>
-            {canManage ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0 text-coral hover:text-coral"
-                aria-label="删除活动"
-                title="删除活动"
-                onClick={() => onDeleteActivity(item)}
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold leading-6">{item.title}</h3>
+            {hasTimeConflict ? (
+              <Badge tone="coral" className="gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                时间冲突
+              </Badge>
             ) : null}
           </div>
           {place ? (
@@ -1955,6 +1889,57 @@ function TimelineItem({
               </>
             ) : null}
           </div>
+          {canManage ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  aria-label={item.isLocked ? "解锁活动" : "锁定活动"}
+                  title={item.isLocked ? "解锁活动" : "锁定活动"}
+                  onClick={() => onToggleLocked(item)}
+                >
+                  <LockIcon className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                {canEditUnlocked ? (
+                  <button
+                    type="button"
+                    className="focus-ring inline-flex min-h-8 items-center rounded-full border border-border bg-white/85 px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary/25 hover:bg-secondary/55 hover:text-primary"
+                    onClick={() => onEditActivity(item)}
+                  >
+                    可编辑
+                  </button>
+                ) : (
+                  <Badge tone="teal">{lockStateLabel}</Badge>
+                )}
+              </div>
+              {canEditUnlocked ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-coral hover:text-coral"
+                  aria-label="删除活动"
+                  title="删除活动"
+                  onClick={() => onDeleteActivity(item)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-3 flex items-center gap-2 border-t border-border/70 pt-3">
+              <LockIcon
+                className="h-4 w-4 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Badge tone={item.isLocked ? "teal" : "outline"}>
+                {lockStateLabel}
+              </Badge>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2760,15 +2745,7 @@ function formatDateTime(value: string) {
 }
 
 function memberName(members: TripMember[], memberId: string) {
-  return members.find((member) => member.id === memberId)?.displayName ?? "成员";
-}
-
-function canDeleteItineraryDay(
-  day: ItineraryDay,
-  currentMember: TripMember,
-  isOwner: boolean
-) {
-  return isOwner || day.createdByMemberId === currentMember.id;
+  return members.find((member) => member.id === memberId)?.displayName ?? "参与者";
 }
 
 function canManageItineraryItem(

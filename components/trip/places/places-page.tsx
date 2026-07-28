@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
@@ -47,7 +48,7 @@ import {
   writeCachedTripGroups
 } from "@/features/trip/trip-group-cache";
 import { listTripGroups } from "@/features/trip/trip-storage";
-import { useLocalTripStore } from "@/features/trip/use-local-trip-store";
+import { useTripDataStore } from "@/features/trip/trip-data-provider";
 import { cn } from "@/lib/utils";
 
 type PlacesPageProps = {
@@ -140,12 +141,12 @@ function formToInput(form: PlaceFormState, fallbackCity: string): PlaceInput {
 }
 
 export function PlacesPage({ tripId }: PlacesPageProps) {
+  const router = useRouter();
   const auth = useAuthSession();
   const [tripGroups, setTripGroups] = useState<TripGroupSummary[]>([]);
   const [isTripGroupsLoading, setIsTripGroupsLoading] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(tripId);
-  const workingTripId = selectedTripId ?? tripId;
-  const { data, isLoaded, actions } = useLocalTripStore(workingTripId);
+  const { data, isLoaded, actions } = useTripDataStore();
   const [filter, setFilter] = useState<PlaceFilter>("pending");
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
   const [votingPlaceId, setVotingPlaceId] = useState<string | null>(null);
@@ -221,10 +222,14 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent<TestAccountTripChangeDetail>(testAccountTripChangeEvent, {
-        detail: { tripId: workingTripId }
+        detail: { tripId }
       })
     );
-  }, [workingTripId]);
+  }, [tripId]);
+
+  useEffect(() => {
+    setSelectedTripId(tripId);
+  }, [tripId]);
 
   useEffect(() => {
     if (
@@ -301,7 +306,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
                 <TripGroupPlaceCard
                   key={group.id}
                   group={group}
-                  onOpen={() => setSelectedTripId(group.id)}
+                  onOpen={() => router.push(`/trip/${group.id}/places`)}
                 />
               ))
             : null}
@@ -442,7 +447,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
         <form className="grid gap-3" onSubmit={handleSubmit}>
           <input
             className="field-control"
-            placeholder="地点名"
+            placeholder="活动主题"
             value={form.name}
             onChange={(event) => updateForm("name", event.target.value)}
           />
@@ -574,7 +579,7 @@ function TripGroupPlaceCard({
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2 text-center">
         <SmallStat label="地点" value={`${group.placeCount}`} />
-        <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
+        <SmallStat label="参与者" value={`${group.members?.length ?? 0}`} />
       </div>
       <MemberList members={group.members ?? []} />
       <Button type="button" className="mt-4 w-full" onClick={onOpen}>
@@ -935,7 +940,7 @@ function MemberList({ members }: { members: TripMember[] }) {
 }
 
 function memberName(members: TripMember[], memberId: string) {
-  return members.find((member) => member.id === memberId)?.displayName ?? "成员";
+  return members.find((member) => member.id === memberId)?.displayName ?? "参与者";
 }
 
 function placeMetaText(place: TravelPlace) {

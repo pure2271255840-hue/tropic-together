@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ticket } from "lucide-react";
+import { LogOut, Ticket } from "lucide-react";
 import { AuthCard } from "@/components/trip/me/auth-card";
 import { JoinNicknameModal } from "@/components/trip/me/join-nickname-modal";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +49,7 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
       const result = await joinTripWithInvite(normalizedInviteCode, displayName);
 
       setActiveTripMemberId(result.tripId, result.memberId);
-      router.push(`/trip/${result.tripId}/itinerary`);
+      router.push(`/trip/${result.tripId}/itinerary?open=detail`);
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : "暂时无法加入行程。");
     } finally {
@@ -84,13 +84,26 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             登录账号：{auth.user.username}
           </p>
-          <Button
-            type="button"
-            className="mt-4"
-            onClick={openJoinNicknameModal}
-          >
-            加入行程
-          </Button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={openJoinNicknameModal}
+            >
+              加入行程
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={auth.isSubmitting}
+              isLoading={auth.isSubmitting}
+              onClick={auth.logout}
+            >
+              {!auth.isSubmitting ? (
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+              ) : null}
+              切换账号
+            </Button>
+          </div>
           <JoinNicknameModal
             open={showJoinNicknameModal}
             accountDisplayName={accountDisplayName}

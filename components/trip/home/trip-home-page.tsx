@@ -18,6 +18,7 @@ import {
   routePlanForItineraryDay,
   type ItineraryRoutePlan
 } from "@/features/trip/itinerary-routes";
+import { useTripDataStore } from "@/features/trip/trip-data-provider";
 import {
   readCachedTripGroups,
   writeCachedTripGroups
@@ -60,6 +61,7 @@ const commonTimezones = [
 
 export function TripHomePage({ tripId }: TripHomePageProps) {
   const auth = useAuthSession();
+  const sharedTripStore = useTripDataStore();
   const [confirmedTrips, setConfirmedTrips] = useState<TripPhase1Data[]>([]);
   const [isLoadingTrips, setIsLoadingTrips] = useState(true);
   const [now, setNow] = useState(() => new Date());
@@ -150,9 +152,21 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
       }),
     [confirmedTrips, detectedTimezone, selectedTimezone]
   );
+  const effectiveConfirmedTrips = useMemo(() => {
+    const tripsById = new Map(confirmedTrips.map((data) => [data.trip.id, data]));
+
+    if (sharedTripStore.isLoaded && isConfirmedTrip(sharedTripStore.data)) {
+      tripsById.set(sharedTripStore.data.trip.id, sharedTripStore.data);
+    }
+
+    return Array.from(tripsById.values());
+  }, [confirmedTrips, sharedTripStore.data, sharedTripStore.isLoaded]);
+  const canShowSharedTrip =
+    sharedTripStore.isLoaded && isConfirmedTrip(sharedTripStore.data);
+  const showLoadingTrips = isLoadingTrips && !canShowSharedTrip;
   const reminderTrip = useMemo(
-    () => selectReminderTrip(confirmedTrips, selectedTimezone, now),
-    [confirmedTrips, now, selectedTimezone]
+    () => selectReminderTrip(effectiveConfirmedTrips, selectedTimezone, now),
+    [effectiveConfirmedTrips, now, selectedTimezone]
   );
   const confirmedVersion = reminderTrip
     ? getConfirmedVersion(reminderTrip)
@@ -196,7 +210,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         </div>
       </section>
 
-      {isLoadingTrips ? (
+      {showLoadingTrips ? (
         <HomeLoadingState />
       ) : reminderTrip ? (
         <section className="corner-mark surface-card">
@@ -248,7 +262,7 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
         </section>
       )}
 
-      {!isLoadingTrips && reminderTrip && reminder ? (
+      {!showLoadingTrips && reminderTrip && reminder ? (
         <ItineraryReminderCard
           reminder={reminder}
           placeById={confirmedPlaceById}

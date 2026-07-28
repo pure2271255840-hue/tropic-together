@@ -100,7 +100,7 @@ export function MePage({ tripId }: MePageProps) {
       const result = await joinTripWithInvite(inviteCode, displayName);
 
       setActiveTripMemberId(result.tripId, result.memberId);
-      router.push(`/trip/${result.tripId}/itinerary`);
+      router.push(`/trip/${result.tripId}/itinerary?open=detail`);
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : "暂时无法加入行程。");
     } finally {
@@ -177,7 +177,7 @@ export function MePage({ tripId }: MePageProps) {
             <form className="mt-4 grid gap-3" onSubmit={openJoinNicknameModal}>
               <input
                 className="field-control uppercase"
-                placeholder="邀请码"
+                placeholder="邀请码或邀请链接"
                 value={inviteCode}
                 onChange={(event) =>
                   setInviteCode(normalizeInviteCode(event.target.value))
