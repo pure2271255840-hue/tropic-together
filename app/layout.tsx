@@ -5,7 +5,10 @@ import { AuthSessionProvider } from "@/features/auth/use-auth-session";
 
 export const metadata: Metadata = {
   title: "Tropic Together",
-  description: "槟城与哥打京那巴鲁旅行协作工具"
+  description: "槟城与哥打京那巴鲁旅行协作工具",
+  icons: {
+    icon: "/icon.svg"
+  }
 };
 
 export default function RootLayout({

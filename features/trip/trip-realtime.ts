@@ -27,6 +27,7 @@ type RealtimeTokenPayload = {
 };
 
 const realtimeTokenRefreshMs = 12 * 60 * 1000;
+let realtimeSubscriptionSequence = 0;
 
 export function isTripRealtimeConfigured() {
   return isSupabaseBrowserConfigured();
@@ -103,12 +104,27 @@ export function subscribeToTripWorkspace(
     }
 
     if (channel) {
-      void realtimeClient.removeChannel(channel);
+      const staleChannel = channel;
+
       channel = null;
+      await realtimeClient.removeChannel(staleChannel).catch((error) => {
+        console.warn("Unable to remove stale Supabase Realtime channel.", error);
+      });
     }
 
+    if (disposed) {
+      return;
+    }
+
+    const channelName = [
+      "trip-workspace",
+      tripId,
+      Date.now().toString(36),
+      (realtimeSubscriptionSequence += 1).toString(36)
+    ].join(":");
+
     channel = realtimeClient
-      .channel(`trip-workspace:${tripId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
@@ -134,6 +150,10 @@ export function subscribeToTripWorkspace(
             status === "TIMED_OUT" ||
             status === "CLOSED")
         ) {
+          if (reconnectId) {
+            window.clearTimeout(reconnectId);
+          }
+
           reconnectId = window.setTimeout(() => {
             if (!disposed) {
               void connect();

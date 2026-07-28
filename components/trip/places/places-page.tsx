@@ -5,11 +5,10 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CalendarDays,
-  ExternalLink,
   MapPin,
+  MoreHorizontal,
   Pencil,
   Plus,
-  Tag,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -24,9 +23,7 @@ import {
   type TestAccountTripChangeDetail
 } from "@/components/trip/phase1/test-account-shortcut-events";
 import {
-  appleMapsDirectionsUrl,
   externalMapUrl,
-  googleMapsDirectionsUrl,
   locationInputParts
 } from "@/features/trip/navigation-links";
 import {
@@ -546,74 +543,109 @@ function PlaceCard({
   onDelete: () => void;
   onVote: () => void;
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { place, votes } = ranking;
   const currentVote = votes.find((vote) => vote.memberId === currentMember.id);
   const addedBy = memberName(members, place.addedByMemberId);
+  const ownerOpinion = `${addedBy} 觉得${placeInitialTagLabels[place.initialTag]}`;
+  const locationLabel = place.address || (place.mapUrl ? "查看地图位置" : "");
   const placeMeta = placeMetaText(place);
 
   return (
-    <article className="surface-card">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-secondary text-sm font-semibold text-primary">
-          {ranking.rank}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+    <article className="surface-card relative">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-secondary text-sm font-semibold text-primary">
+            {ranking.rank}
+          </span>
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold leading-snug">{place.name}</h2>
+            {placeMeta ? (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {placeMeta}
+              </p>
+            ) : null}
           </div>
-          {placeMeta ? (
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {placeMeta}
-            </p>
+        </div>
+        <div className="relative flex shrink-0 items-start gap-2">
+          <Badge
+            tone={place.initialTag === "must_go" ? "teal" : "outline"}
+            className="max-w-[9rem] justify-center text-center leading-4"
+          >
+            {ownerOpinion}
+          </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="地点操作"
+            onClick={() => setIsMenuOpen((current) => !current)}
+          >
+            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          {isMenuOpen ? (
+            <div className="absolute right-0 top-10 z-20 w-32 rounded-[1rem] border border-border bg-white p-1 shadow-lift">
+              <button
+                type="button"
+                className="focus-ring flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-secondary/60 hover:text-primary"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  onEdit();
+                }}
+              >
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+                编辑
+              </button>
+              <button
+                type="button"
+                className="focus-ring flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-coral hover:bg-secondary/60"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  onDelete();
+                }}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                删除
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
 
       <div className="mt-4 grid gap-3 text-sm leading-6">
-        {place.address ? (
-          <p className="flex gap-2">
+        {locationLabel ? (
+          <a
+            className="focus-ring flex gap-2 rounded-lg text-muted-foreground transition hover:text-primary"
+            href={externalMapUrl(place)}
+            rel="noreferrer"
+            target="_blank"
+          >
             <MapPin className="mt-1 h-4 w-4 shrink-0 text-teal" aria-hidden="true" />
-            <span>{place.address}</span>
-          </p>
+            <span>{locationLabel}</span>
+          </a>
         ) : null}
         {place.notes ? <p className="text-muted-foreground">{place.notes}</p> : null}
         <div className="flex flex-wrap gap-2">
           <Badge tone="outline">
-            <Tag className="mr-1 h-3 w-3" aria-hidden="true" />
-            {placeInitialTagLabels[place.initialTag]}
+            <ThumbsUp className="mr-1 h-3 w-3 text-teal" aria-hidden="true" />
+            {placeVoteLabels.up} {ranking.upCount}
+          </Badge>
+          <Badge tone="outline">
+            <ThumbsDown className="mr-1 h-3 w-3 text-coral" aria-hidden="true" />
+            {placeVoteLabels.down} {ranking.downCount}
           </Badge>
           <Badge tone="outline">
             <Trophy className="mr-1 h-3 w-3" aria-hidden="true" />
             {ranking.score} 分
           </Badge>
-          <span className="text-xs text-muted-foreground">
-            由 {addedBy} 添加
-          </span>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Button type="button" className="w-full" onClick={onVote}>
+      <div className="mt-4">
+        <Button type="button" className="w-full sm:w-auto" onClick={onVote}>
           {currentVote ? "修改投票" : "投票"}
         </Button>
-        {place.mapUrl ? (
-          <ExternalNavLink href={externalMapUrl(place)} label="地图" />
-        ) : null}
-        <ExternalNavLink href={appleMapsDirectionsUrl(place)} label="Apple" />
-        <ExternalNavLink href={googleMapsDirectionsUrl(place)} label="Google" />
-        <Button type="button" variant="outline" className="w-full" onClick={onEdit}>
-          <Pencil className="h-4 w-4" aria-hidden="true" />
-          编辑
-        </Button>
-        <Button type="button" variant="outline" className="w-full" onClick={onDelete}>
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-          删除
-        </Button>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2 text-sm text-muted-foreground">
-        <span>{placeVoteLabels.up} {ranking.upCount}</span>
-        <span>{placeVoteLabels.down} {ranking.downCount}</span>
       </div>
     </article>
   );
@@ -752,22 +784,6 @@ function TinyTagButton({
     >
       {label}
     </button>
-  );
-}
-
-function ExternalNavLink({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      className={cn(
-        "focus-ring inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
-      )}
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {label}
-      <ExternalLink className="h-4 w-4" aria-hidden="true" />
-    </a>
   );
 }
 
