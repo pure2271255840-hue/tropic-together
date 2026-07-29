@@ -16,6 +16,7 @@ import {
   buildPlaceRankings,
   placeInitialTagLabels
 } from "@/features/trip/trip-labels";
+import { optimizeAiItineraryDraftRoute } from "@/features/trip/route-optimizer";
 
 export const runtime = "nodejs";
 
@@ -61,7 +62,9 @@ type PromptPayload = {
     timezone: string;
     destinations: string[];
     hotelAddress?: string;
+    hotelMapUrl?: string;
   };
+  ownerPreference?: string;
   places: Array<{
     name: string;
     city: string;
@@ -156,6 +159,7 @@ function buildPromptPayload(
   currentVersion: ItineraryVersion | undefined
 ): PromptPayload {
   const rankings = buildPlaceRankings(body.data.places, body.data.placeVotes);
+  const ownerPreference = body.ownerPreference?.trim();
 
   return {
     mode: body.mode,
@@ -165,8 +169,10 @@ function buildPromptPayload(
       endDate: body.data.trip.endDate,
       timezone: body.data.trip.timezone,
       destinations: body.data.trip.destinations,
-      hotelAddress: body.data.trip.hotelAddress
+      hotelAddress: body.data.trip.hotelAddress,
+      hotelMapUrl: body.data.trip.hotelMapUrl
     },
+    ownerPreference: ownerPreference || undefined,
     places: rankings.map((ranking) => {
       const place = ranking.place;
 
@@ -215,6 +221,7 @@ function jsonInstruction() {
     "- 结果只是可编辑草稿，不要声称已经确认最终版。",
     "- 优先使用 places 中已有地点，placeName 必须尽量与 places.name 完全一致。",
     "- places 已按成员偏好粗排，preferenceScore/preferenceRank 只作为偏好参考，不要把分数当唯一排序依据。",
+    "- 如果输入包含 ownerPreference，它是发起者本次生成的软偏好。要尽量参考，例如不想太赶、最后想喝酒、每天不要太早开始、少跨区域折返；但不能覆盖成员投票、日期范围、已锁定活动和地点事实。",
     "- 安排活动时要根据 city、address、coordinate 和酒店地址把相近地点放在同一天或相邻时段，减少跨城折返和来回绕路；必要时可以为了路线顺畅牺牲少量偏好分。",
     "- 如果 mode 是 organize，要尊重 currentVersion 里 isLocked 为 true 的活动。",
     "- 不要编造票务、护照、预订号、联系方式或费用。",
@@ -521,7 +528,14 @@ export async function POST(request: NextRequest) {
     const draft = content ? cleanDraft(parseJsonContent(content)) : null;
 
     if (draft) {
-      return NextResponse.json({ draft });
+      return NextResponse.json({
+        draft: optimizeAiItineraryDraftRoute(draft, {
+          places: body.data.places,
+          hotelAddress: body.data.trip.hotelAddress,
+          hotelMapUrl: body.data.trip.hotelMapUrl,
+          currentVersion
+        })
+      });
     }
 
     console.error("DeepSeek returned invalid itinerary draft", {

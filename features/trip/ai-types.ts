@@ -6,6 +6,7 @@ export type AiTripDraftRequest = {
   mode: AiTripActionMode;
   data: TripPhase1Data;
   versionId?: string;
+  ownerPreference?: string;
 };
 
 export type AiTripDraftResponse = {

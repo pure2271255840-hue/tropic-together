@@ -147,6 +147,10 @@ type AiDraftPreviewState = {
   draft: AiItineraryDraft;
 };
 
+type AiPreferenceModalState = {
+  mode: AiTripActionMode;
+};
+
 type EditingTripMemberState = {
   group: TripGroupSummary;
   member: TripMember;
@@ -258,6 +262,9 @@ export function ItineraryPage({
   const [aiActionState, setAiActionState] = useState<AiActionState | null>(null);
   const [aiDraftPreview, setAiDraftPreview] =
     useState<AiDraftPreviewState | null>(null);
+  const [aiPreferenceModal, setAiPreferenceModal] =
+    useState<AiPreferenceModalState | null>(null);
+  const [aiPreferenceText, setAiPreferenceText] = useState("");
   const [voteIntent, setVoteIntent] = useState<ItineraryVoteValue | null>(null);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
   const [newTripForm, setNewTripForm] = useState<NewTripForm>({
@@ -751,7 +758,19 @@ export function ItineraryPage({
     setShowAddItemModal(false);
   }
 
-  async function runAiAction(mode: AiTripActionMode) {
+  function openAiPreferenceModal(mode: AiTripActionMode) {
+    if (isContentLocked || aiActionState?.status === "running") {
+      return;
+    }
+
+    setAiPreferenceText("");
+    setAiPreferenceModal({ mode });
+  }
+
+  async function runAiAction(
+    mode: AiTripActionMode,
+    ownerPreference = ""
+  ) {
     if (isContentLocked || aiActionState?.status === "running") {
       return;
     }
@@ -765,7 +784,8 @@ export function ItineraryPage({
       const result = await requestAiItineraryDraft({
         mode,
         data,
-        versionId
+        versionId,
+        ownerPreference: ownerPreference.trim() || undefined
       });
 
       setAiDraftPreview({ mode, draft: result.draft });
@@ -780,6 +800,33 @@ export function ItineraryPage({
             : "AI 草稿生成失败，请稍后再试。"
       });
     }
+  }
+
+  function submitAiPreference(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!aiPreferenceModal) {
+      return;
+    }
+
+    const mode = aiPreferenceModal.mode;
+    const ownerPreference = aiPreferenceText;
+
+    setAiPreferenceModal(null);
+    setAiPreferenceText("");
+    void runAiAction(mode, ownerPreference);
+  }
+
+  function skipAiPreference() {
+    if (!aiPreferenceModal) {
+      return;
+    }
+
+    const mode = aiPreferenceModal.mode;
+
+    setAiPreferenceModal(null);
+    setAiPreferenceText("");
+    void runAiAction(mode);
   }
 
   return (
@@ -840,7 +887,7 @@ export function ItineraryPage({
             setShowVoteModal(true);
           }}
           onAddItem={openAddItem}
-          onOrganizeWithAi={() => void runAiAction("organize")}
+          onOrganizeWithAi={() => openAiPreferenceModal("organize")}
           onOpenSettings={openTripSettingsModal}
           onConfirmFinal={() => {
             if (!isContentLocked) {
@@ -915,7 +962,7 @@ export function ItineraryPage({
           }
           onBack={backToTripGroups}
           onOpenSettings={openTripSettingsModal}
-          onGenerateAi={() => void runAiAction("generate")}
+          onGenerateAi={() => openAiPreferenceModal("generate")}
         />
       )}
 
@@ -1292,6 +1339,18 @@ export function ItineraryPage({
           </Button>
         </form>
       </Modal>
+
+      <AiPreferenceModal
+        state={aiPreferenceModal}
+        value={aiPreferenceText}
+        onChange={setAiPreferenceText}
+        onClose={() => {
+          setAiPreferenceModal(null);
+          setAiPreferenceText("");
+        }}
+        onSkip={skipAiPreference}
+        onSubmit={submitAiPreference}
+      />
 
       <AiDraftPreviewModal
         state={aiDraftPreview}
@@ -2887,6 +2946,58 @@ function DeleteItemConfirmModal({
           </Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+function AiPreferenceModal({
+  state,
+  value,
+  onChange,
+  onClose,
+  onSkip,
+  onSubmit
+}: {
+  state: AiPreferenceModalState | null;
+  value: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSkip: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const isOrganize = state?.mode === "organize";
+
+  return (
+    <Modal
+      open={Boolean(state)}
+      title="这次行程有什么偏好吗？"
+      description="可以留空，AI 会继续按地点投票、路线顺序和时间安排生成。"
+      onClose={onClose}
+    >
+      <form className="grid gap-4" onSubmit={onSubmit}>
+        <label className="grid gap-2 text-sm font-medium">
+          发起者偏好
+          <textarea
+            className="field-control min-h-32 resize-y"
+            maxLength={240}
+            placeholder="比如：不想太赶、最后想喝酒、每天不要太早开始、少跨区域折返"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </label>
+        <p className="text-sm leading-6 text-muted-foreground">
+          这会作为本次生成的软偏好参考，不会覆盖成员投票、锁定活动和日期范围。
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="outline" onClick={onSkip}>
+            跳过
+          </Button>
+          <Button type="submit">
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            {isOrganize ? "按偏好整理" : "按偏好生成"}
+          </Button>
+        </div>
+      </form>
     </Modal>
   );
 }
