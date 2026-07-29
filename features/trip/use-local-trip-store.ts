@@ -93,6 +93,14 @@ function whenContentEditable(
     isTripContentLocked(current.trip.phase) ? current : producer(current);
 }
 
+function currentMemberCanCancelFinalVersion(data: TripPhase1Data) {
+  return (
+    data.trip.phase === "final_confirmed" &&
+    data.members.find((member) => member.id === data.currentMemberId)?.role ===
+      "owner"
+  );
+}
+
 export function useLocalTripStore(tripId: string) {
   const [data, setData] = useState<TripPhase1Data>(() =>
     createSeedTripData(tripId)
@@ -374,10 +382,11 @@ export function useLocalTripStore(tripId: string) {
         );
       },
       cancelFinalItineraryVersion(versionId: string) {
-        commit(
-          whenContentEditable((current) =>
-            cancelFinalItineraryVersionInTrip(current, versionId)
-          )
+        commit((current) =>
+          isTripContentLocked(current.trip.phase) &&
+          !currentMemberCanCancelFinalVersion(current)
+            ? current
+            : cancelFinalItineraryVersionInTrip(current, versionId)
         );
       },
       reset() {

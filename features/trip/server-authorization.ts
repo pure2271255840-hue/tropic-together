@@ -9,6 +9,7 @@ import {
   memberDisplayNameExists,
   memberHasTripContributions
 } from "./member-actions";
+import { cancelFinalItineraryVersionInTrip } from "./local-storage-adapter";
 import { isTripContentLocked } from "./trip-lock";
 import type { TripMember, TripPhase1Data } from "./types";
 
@@ -92,12 +93,51 @@ function tripDataExceptMembershipSignature(data: TripPhase1Data) {
 function tripContentSignature(data: TripPhase1Data) {
   return JSON.stringify({
     trip: data.trip,
-    places: data.places,
-    placeVotes: data.placeVotes,
-    itineraryVersions: data.itineraryVersions,
+    places: data.places.map((place) => ({ ...place, updatedAt: "" })),
+    placeVotes: data.placeVotes.map((vote) => ({ ...vote, updatedAt: "" })),
+    itineraryVersions: data.itineraryVersions.map((version) => ({
+      ...version,
+      updatedAt: ""
+    })),
     currentItineraryVersionId: data.currentItineraryVersionId,
-    itineraryVotes: data.itineraryVotes
+    itineraryVotes: data.itineraryVotes.map((vote) => ({
+      ...vote,
+      updatedAt: ""
+    }))
   });
+}
+
+function currentMemberCanCancelFinalConfirmation(
+  currentData: TripPhase1Data,
+  nextData: TripPhase1Data,
+  currentMember: TripMember
+) {
+  if (currentMember.role !== "owner" || currentData.trip.phase !== "final_confirmed") {
+    return false;
+  }
+
+  const finalVersion =
+    currentData.itineraryVersions.find(
+      (version) =>
+        version.id === currentData.currentItineraryVersionId &&
+        version.status === "final"
+    ) ??
+    currentData.itineraryVersions.find((version) => version.status === "final");
+
+  if (!finalVersion) {
+    return false;
+  }
+
+  const expectedData = cancelFinalItineraryVersionInTrip(
+    currentData,
+    finalVersion.id
+  );
+
+  if (isTripContentLocked(expectedData.trip.phase)) {
+    return false;
+  }
+
+  return tripContentSignature(nextData) === tripContentSignature(expectedData);
 }
 
 function currentMemberCanLeaveTrip(
@@ -234,7 +274,8 @@ export async function saveAuthorizedTripData(
 
   if (
     isTripContentLocked(currentData.trip.phase) &&
-    tripContentSignature(data) !== tripContentSignature(currentData)
+    tripContentSignature(data) !== tripContentSignature(currentData) &&
+    !currentMemberCanCancelFinalConfirmation(currentData, data, currentMember)
   ) {
     return {
       ok: false,

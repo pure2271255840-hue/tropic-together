@@ -5,6 +5,14 @@ export type MapDestination = Pick<
   "name" | "address" | "city" | "coordinate" | "mapUrl"
 >;
 
+export type AppleTravelMode = "driving" | "walking" | "transit" | "cycling";
+
+export type AppleRouteLeg = {
+  href: string;
+  originName: string;
+  destinationName: string;
+};
+
 export function normalizedMapUrl(value?: string) {
   const trimmedValue = value?.trim();
 
@@ -137,6 +145,20 @@ function appleTextDestinationFor(place: MapDestination) {
   return [place.address, place.city, place.name].filter(Boolean).join(", ");
 }
 
+function appleRoutePlaceValue(place: MapDestination) {
+  const coordinate = coordinateFor(place);
+
+  if (coordinate) {
+    return coordinateString(coordinate);
+  }
+
+  return appleTextDestinationFor(place) || textDestinationFor(place);
+}
+
+function routeStopName(place: MapDestination) {
+  return place.name || place.address || place.city || "Stop";
+}
+
 export function locationInputParts(
   value: string,
   currentAddress = "",
@@ -211,11 +233,48 @@ export function appleMapsDirectionsUrl(place: MapDestination) {
   return appleMapsSearchUrl(place);
 }
 
-function appleMapsRouteDestinationFor(place: MapDestination) {
-  return destinationFor(place) || appleTextDestinationFor(place);
+const appleLegacyModeFlags: Record<AppleTravelMode, "d" | "w" | "r"> = {
+  driving: "d",
+  walking: "w",
+  transit: "r",
+  cycling: "d"
+};
+
+export function appleMapsRouteLegUrl(
+  origin: MapDestination,
+  destination: MapDestination,
+  mode: AppleTravelMode = "driving"
+) {
+  const params = new URLSearchParams({
+    saddr: appleRoutePlaceValue(origin),
+    daddr: appleRoutePlaceValue(destination),
+    dirflg: appleLegacyModeFlags[mode]
+  });
+
+  return `https://maps.apple.com/?${params.toString()}`;
 }
 
-export function appleMapsRouteUrl(places: MapDestination[]) {
+export function appleMapsRouteLegs(
+  places: MapDestination[],
+  mode: AppleTravelMode = "driving"
+): AppleRouteLeg[] {
+  const routePlaces = places.filter(Boolean);
+
+  return routePlaces.slice(0, -1).map((origin, index) => {
+    const destination = routePlaces[index + 1];
+
+    return {
+      href: appleMapsRouteLegUrl(origin, destination, mode),
+      originName: routeStopName(origin),
+      destinationName: routeStopName(destination)
+    };
+  });
+}
+
+export function appleMapsRouteUrl(
+  places: MapDestination[],
+  mode: AppleTravelMode = "driving"
+) {
   const routePlaces = places.filter(Boolean);
 
   if (routePlaces.length === 0) {
@@ -226,14 +285,21 @@ export function appleMapsRouteUrl(places: MapDestination[]) {
     return appleMapsSearchUrl(routePlaces[0]);
   }
 
-  const origin = encodeURIComponent(
-    appleMapsRouteDestinationFor(routePlaces[0])
-  );
-  const destination = encodeURIComponent(
-    appleMapsRouteDestinationFor(routePlaces[routePlaces.length - 1])
-  );
+  const params = new URLSearchParams();
 
-  return `https://maps.apple.com/?saddr=${origin}&daddr=${destination}&dirflg=d`;
+  params.set("source", appleRoutePlaceValue(routePlaces[0]));
+
+  for (const waypoint of routePlaces.slice(1, -1)) {
+    params.append("waypoint", appleRoutePlaceValue(waypoint));
+  }
+
+  params.set(
+    "destination",
+    appleRoutePlaceValue(routePlaces[routePlaces.length - 1])
+  );
+  params.set("mode", mode);
+
+  return `https://maps.apple.com/directions?${params.toString()}`;
 }
 
 export function googleMapsRouteUrl(places: MapDestination[]) {

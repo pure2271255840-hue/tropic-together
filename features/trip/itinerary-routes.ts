@@ -1,8 +1,10 @@
 import {
+  appleMapsRouteLegs,
   appleMapsRouteUrl,
   appleMapsSearchUrl,
   externalMapUrl,
   googleMapsRouteUrl,
+  type AppleRouteLeg,
   type MapDestination
 } from "@/features/trip/navigation-links";
 import type { ItineraryDay, ItineraryVersion, TravelPlace } from "./types";
@@ -10,6 +12,7 @@ import type { ItineraryDay, ItineraryVersion, TravelPlace } from "./types";
 export type ItineraryRoutePlan = {
   href: string;
   appleHref: string;
+  appleLegs: AppleRouteLeg[];
   label: string;
 };
 
@@ -61,6 +64,7 @@ export function routePlanForItineraryDay(
     return {
       href: googleMapsRouteUrl(stops),
       appleHref: appleMapsRouteUrl(stops),
+      appleLegs: appleMapsRouteLegs(stops),
       label: "当天路线"
     };
   }
@@ -69,6 +73,7 @@ export function routePlanForItineraryDay(
     return {
       href: googleMapsRouteUrl(dayPlaces),
       appleHref: appleMapsRouteUrl(dayPlaces),
+      appleLegs: appleMapsRouteLegs(dayPlaces),
       label: "当天路线"
     };
   }
@@ -77,6 +82,7 @@ export function routePlanForItineraryDay(
     return {
       href: externalMapUrl(dayPlaces[0]),
       appleHref: appleMapsSearchUrl(dayPlaces[0]),
+      appleLegs: [],
       label: "查看当天地点"
     };
   }
@@ -100,11 +106,13 @@ export function routePlanForItineraryVersion(
       ? {
           href: googleMapsRouteUrl(stops),
           appleHref: appleMapsRouteUrl(stops),
+          appleLegs: appleMapsRouteLegs(stops),
           label: "总路线"
         }
       : {
           href: externalMapUrl(hotelStop),
           appleHref: appleMapsSearchUrl(hotelStop),
+          appleLegs: [],
           label: "查看酒店"
         };
   }
@@ -113,6 +121,7 @@ export function routePlanForItineraryVersion(
     return {
       href: googleMapsRouteUrl(routePlaces),
       appleHref: appleMapsRouteUrl(routePlaces),
+      appleLegs: appleMapsRouteLegs(routePlaces),
       label: "总路线"
     };
   }
@@ -121,6 +130,7 @@ export function routePlanForItineraryVersion(
     return {
       href: externalMapUrl(routePlaces[0]),
       appleHref: appleMapsSearchUrl(routePlaces[0]),
+      appleLegs: [],
       label: "查看地点"
     };
   }

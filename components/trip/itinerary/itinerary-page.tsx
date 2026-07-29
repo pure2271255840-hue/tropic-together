@@ -815,6 +815,11 @@ export function ItineraryPage({
           )}
           isOwner={isOwner}
           isContentLocked={isContentLocked}
+          canCancelFinal={
+            data.trip.phase === "final_confirmed" &&
+            isOwner &&
+            activeVersion.status === "final"
+          }
           isOrganizingWithAi={
             aiActionState?.mode === "organize" &&
             aiActionState.status === "running"
@@ -843,7 +848,11 @@ export function ItineraryPage({
             }
           }}
           onCancelFinal={() => {
-            if (!isContentLocked) {
+            if (
+              data.trip.phase === "final_confirmed" &&
+              isOwner &&
+              activeVersion.status === "final"
+            ) {
               actions.cancelFinalItineraryVersion(activeVersion.id);
             }
           }}
@@ -1705,8 +1714,7 @@ function HotelLocationLine({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
           <Route className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <span className="font-medium text-primary">{routePlan.label}</span>
-          <ExternalNavLink href={routePlan.appleHref} label="Apple" />
-          <ExternalNavLink href={routePlan.href} label="Google" />
+          <RoutePlanLinks routePlan={routePlan} />
         </div>
       ) : null}
     </div>
@@ -1952,6 +1960,7 @@ function ItineraryDetail({
   votes,
   isOwner,
   isContentLocked,
+  canCancelFinal,
   isOrganizingWithAi,
   aiError,
   onBack,
@@ -1981,6 +1990,7 @@ function ItineraryDetail({
   }>;
   isOwner: boolean;
   isContentLocked: boolean;
+  canCancelFinal: boolean;
   isOrganizingWithAi: boolean;
   aiError?: string;
   onBack: () => void;
@@ -2032,7 +2042,7 @@ function ItineraryDetail({
                 <Badge tone={version.status === "final" ? "teal" : "coral"}>
                   {versionBadgeLabel}
                 </Badge>
-                {isOwner && !isContentLocked ? (
+                {isOwner && (!isContentLocked || canCancelFinal) ? (
                   <Button
                     type="button"
                     size="sm"
@@ -2250,8 +2260,7 @@ function Timeline({
                       <Route className="h-4 w-4" aria-hidden="true" />
                       {routePlan.label}
                     </span>
-                    <ExternalNavLink href={routePlan.appleHref} label="Apple" />
-                    <ExternalNavLink href={routePlan.href} label="Google" />
+                    <RoutePlanLinks routePlan={routePlan} />
                   </div>
                 ) : null}
               </div>
@@ -3094,7 +3103,40 @@ function PlacePicker({
   );
 }
 
-function ExternalNavLink({ href, label }: { href: string; label: string }) {
+function RoutePlanLinks({ routePlan }: { routePlan: ItineraryRoutePlan }) {
+  return (
+    <>
+      <ExternalNavLink
+        href={routePlan.appleHref}
+        label={routePlan.appleLegs.length > 1 ? "Apple 多站" : "Apple"}
+      />
+      <ExternalNavLink href={routePlan.href} label="Google" />
+      {routePlan.appleLegs.length > 1 ? (
+        <div className="flex basis-full flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+          <span>Apple 逐段</span>
+          {routePlan.appleLegs.map((leg, index) => (
+            <ExternalNavLink
+              key={`${leg.href}-${index}`}
+              href={leg.href}
+              label={`第${index + 1}段`}
+              title={`${leg.originName} -> ${leg.destinationName}`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function ExternalNavLink({
+  href,
+  label,
+  title
+}: {
+  href: string;
+  label: string;
+  title?: string;
+}) {
   return (
     <a
       className={cn(
@@ -3103,6 +3145,7 @@ function ExternalNavLink({ href, label }: { href: string; label: string }) {
       href={href}
       rel="noreferrer"
       target="_blank"
+      title={title}
     >
       {label}
       {label === "总路线" ? (
