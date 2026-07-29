@@ -1,4 +1,6 @@
 import {
+  appleMapsRouteUrl,
+  appleMapsSearchUrl,
   externalMapUrl,
   googleMapsRouteUrl,
   type MapDestination
@@ -7,6 +9,7 @@ import type { ItineraryDay, ItineraryVersion, TravelPlace } from "./types";
 
 export type ItineraryRoutePlan = {
   href: string;
+  appleHref: string;
   label: string;
 };
 
@@ -53,18 +56,29 @@ export function routePlanForItineraryDay(
   const hotelStop = hotelStopForLocation(hotelAddress, hotelMapUrl);
 
   if (hotelStop && dayPlaces.length > 0) {
+    const stops = [hotelStop, ...dayPlaces];
+
     return {
-      href: googleMapsRouteUrl([hotelStop, ...dayPlaces]),
+      href: googleMapsRouteUrl(stops),
+      appleHref: appleMapsRouteUrl(stops),
       label: "当天路线"
     };
   }
 
   if (dayPlaces.length > 1) {
-    return { href: googleMapsRouteUrl(dayPlaces), label: "当天路线" };
+    return {
+      href: googleMapsRouteUrl(dayPlaces),
+      appleHref: appleMapsRouteUrl(dayPlaces),
+      label: "当天路线"
+    };
   }
 
   if (dayPlaces.length === 1) {
-    return { href: externalMapUrl(dayPlaces[0]), label: "查看当天地点" };
+    return {
+      href: externalMapUrl(dayPlaces[0]),
+      appleHref: appleMapsSearchUrl(dayPlaces[0]),
+      label: "查看当天地点"
+    };
   }
 
   return null;
@@ -83,16 +97,32 @@ export function routePlanForItineraryVersion(
     const stops = [hotelStop, ...routePlaces];
 
     return stops.length > 1
-      ? { href: googleMapsRouteUrl(stops), label: "总路线" }
-      : { href: externalMapUrl(hotelStop), label: "查看酒店" };
+      ? {
+          href: googleMapsRouteUrl(stops),
+          appleHref: appleMapsRouteUrl(stops),
+          label: "总路线"
+        }
+      : {
+          href: externalMapUrl(hotelStop),
+          appleHref: appleMapsSearchUrl(hotelStop),
+          label: "查看酒店"
+        };
   }
 
   if (routePlaces.length > 1) {
-    return { href: googleMapsRouteUrl(routePlaces), label: "总路线" };
+    return {
+      href: googleMapsRouteUrl(routePlaces),
+      appleHref: appleMapsRouteUrl(routePlaces),
+      label: "总路线"
+    };
   }
 
   if (routePlaces.length === 1) {
-    return { href: externalMapUrl(routePlaces[0]), label: "查看地点" };
+    return {
+      href: externalMapUrl(routePlaces[0]),
+      appleHref: appleMapsSearchUrl(routePlaces[0]),
+      label: "查看地点"
+    };
   }
 
   return null;

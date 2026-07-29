@@ -37,6 +37,7 @@ import {
   resetTripData,
   saveTripData
 } from "./trip-storage";
+import { isTripContentLocked } from "./trip-lock";
 import type {
   AiItineraryDraft,
   ItineraryDayInput,
@@ -83,6 +84,13 @@ function withActiveTripMember(data: TripPhase1Data) {
   }
 
   return data;
+}
+
+function whenContentEditable(
+  producer: TripProducer
+): TripProducer {
+  return (current) =>
+    isTripContentLocked(current.trip.phase) ? current : producer(current);
 }
 
 export function useLocalTripStore(tripId: string) {
@@ -263,16 +271,18 @@ export function useLocalTripStore(tripId: string) {
         });
       },
       updateTripSettings(input: TripSettingsInput) {
-        commit((current) => updateTripSettingsInTrip(current, input));
+        commit(whenContentEditable((current) => updateTripSettingsInTrip(current, input)));
       },
       addPlace(input: PlaceInput) {
-        commit((current) => addPlaceToTrip(current, input));
+        commit(whenContentEditable((current) => addPlaceToTrip(current, input)));
       },
       updatePlace(placeId: string, input: PlaceInput) {
-        commit((current) => updatePlaceInTrip(current, placeId, input));
+        commit(
+          whenContentEditable((current) => updatePlaceInTrip(current, placeId, input))
+        );
       },
       deletePlace(placeId: string) {
-        commit((current) => deletePlaceFromTrip(current, placeId));
+        commit(whenContentEditable((current) => deletePlaceFromTrip(current, placeId)));
       },
       setPlaceVote(
         placeId: string,
@@ -280,33 +290,39 @@ export function useLocalTripStore(tripId: string) {
         value: PlaceVoteValue,
         reason: string
       ) {
-        commit((current) =>
-          setPlaceVoteInTrip(current, placeId, memberId, value, reason)
+        commit(
+          whenContentEditable((current) =>
+            setPlaceVoteInTrip(current, placeId, memberId, value, reason)
+          )
         );
       },
       addItineraryItem(input: ItineraryItemInput) {
-        commit((current) => addItineraryItemToTrip(current, input));
+        commit(whenContentEditable((current) => addItineraryItemToTrip(current, input)));
       },
       addItineraryDay(input: ItineraryDayInput) {
-        commit((current) => addItineraryDayToTrip(current, input));
+        commit(whenContentEditable((current) => addItineraryDayToTrip(current, input)));
       },
       addAiItineraryDraft(input: AiItineraryDraft) {
-        commit((current) => addAiItineraryDraftToTrip(current, input));
+        commit(whenContentEditable((current) => addAiItineraryDraftToTrip(current, input)));
       },
       updateItineraryDay(input: ItineraryDayInput & { dayId: string }) {
-        commit((current) => updateItineraryDayInTrip(current, input));
+        commit(whenContentEditable((current) => updateItineraryDayInTrip(current, input)));
       },
       deleteItineraryDays(versionId: string, dayIds: string[]) {
-        commit((current) =>
-          deleteItineraryDaysFromTrip(current, versionId, dayIds)
+        commit(
+          whenContentEditable((current) =>
+            deleteItineraryDaysFromTrip(current, versionId, dayIds)
+          )
         );
       },
       updateItineraryItem(input: ItineraryItemInput & { itemId: string }) {
-        commit((current) => updateItineraryItemInTrip(current, input));
+        commit(whenContentEditable((current) => updateItineraryItemInTrip(current, input)));
       },
       deleteItineraryItem(versionId: string, itemId: string) {
-        commit((current) =>
-          deleteItineraryItemFromTrip(current, versionId, itemId)
+        commit(
+          whenContentEditable((current) =>
+            deleteItineraryItemFromTrip(current, versionId, itemId)
+          )
         );
       },
       setItineraryItemLocked(
@@ -314,8 +330,10 @@ export function useLocalTripStore(tripId: string) {
         itemId: string,
         isLocked: boolean
       ) {
-        commit((current) =>
-          setItineraryItemLockedInTrip(current, versionId, itemId, isLocked)
+        commit(
+          whenContentEditable((current) =>
+            setItineraryItemLockedInTrip(current, versionId, itemId, isLocked)
+          )
         );
       },
       setItineraryItemsLockedInDateRange(
@@ -324,13 +342,15 @@ export function useLocalTripStore(tripId: string) {
         endDate: string,
         isLocked: boolean
       ) {
-        commit((current) =>
-          setItineraryItemsLockedInDateRangeInTrip(
-            current,
-            versionId,
-            startDate,
-            endDate,
-            isLocked
+        commit(
+          whenContentEditable((current) =>
+            setItineraryItemsLockedInDateRangeInTrip(
+              current,
+              versionId,
+              startDate,
+              endDate,
+              isLocked
+            )
           )
         );
       },
@@ -340,16 +360,24 @@ export function useLocalTripStore(tripId: string) {
         value: ItineraryVoteValue,
         reason: string
       ) {
-        commit((current) =>
-          setItineraryVoteInTrip(current, versionId, memberId, value, reason)
+        commit(
+          whenContentEditable((current) =>
+            setItineraryVoteInTrip(current, versionId, memberId, value, reason)
+          )
         );
       },
       confirmItineraryVersion(versionId: string) {
-        commit((current) => confirmItineraryVersionInTrip(current, versionId));
+        commit(
+          whenContentEditable((current) =>
+            confirmItineraryVersionInTrip(current, versionId)
+          )
+        );
       },
       cancelFinalItineraryVersion(versionId: string) {
-        commit((current) =>
-          cancelFinalItineraryVersionInTrip(current, versionId)
+        commit(
+          whenContentEditable((current) =>
+            cancelFinalItineraryVersionInTrip(current, versionId)
+          )
         );
       },
       reset() {

@@ -49,6 +49,7 @@ import {
 } from "@/features/trip/trip-group-cache";
 import { listTripGroups } from "@/features/trip/trip-storage";
 import { useTripDataStore } from "@/features/trip/trip-data-provider";
+import { isTripContentLocked } from "@/features/trip/trip-lock";
 import { cn } from "@/lib/utils";
 
 type PlacesPageProps = {
@@ -156,6 +157,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   const [form, setForm] = useState<PlaceFormState>(emptyForm);
 
   const currentMember = resolveCurrentTripMember(data, auth.user);
+  const isContentLocked = isTripContentLocked(data.trip.phase);
   const rankings = useMemo(
     () => buildPlaceRankings(data.places, data.placeVotes),
     [data.placeVotes, data.places]
@@ -165,7 +167,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
       !ranking.votes.some((vote) => vote.memberId === currentMember.id)
   ).length;
   const visibleRankings = rankings.filter((ranking) => {
-    if (filter === "pending") {
+    if (!isContentLocked && filter === "pending") {
       return !ranking.votes.some((vote) => vote.memberId === currentMember.id);
     }
 
@@ -248,13 +250,17 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   }
 
   function openAddPlace() {
+    if (isContentLocked) {
+      return;
+    }
+
     setEditingPlaceId(null);
     setForm(emptyForm);
     setShowPlaceModal(true);
   }
 
   function startEditing(place: TravelPlace) {
-    if (!canManagePlace(place, currentMember)) {
+    if (isContentLocked || !canManagePlace(place, currentMember)) {
       return;
     }
 
@@ -267,6 +273,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
     event.preventDefault();
 
     if (
+      isContentLocked ||
       !form.name.trim() ||
       (form.category === customCategoryValue && !form.customCategory.trim())
     ) {
@@ -379,37 +386,48 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             </p>
             <h1 className="page-title">地点池</h1>
           </div>
-          <Badge tone={pendingCount > 0 ? "sunset" : "teal"} className="shrink-0">
-            {pendingCount} 待投票
+          <Badge
+            tone={isContentLocked ? "teal" : pendingCount > 0 ? "sunset" : "teal"}
+            className="shrink-0"
+          >
+            {isContentLocked ? "最终版已锁定" : `${pendingCount} 待投票`}
           </Badge>
         </div>
       </section>
 
-      <section className="grid gap-2 sm:grid-cols-2">
-        <Button type="button" className="w-full" onClick={openAddPlace}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          添加地点
-        </Button>
-      </section>
+      {isContentLocked ? (
+        <section className="surface-card-muted text-sm leading-6 text-muted-foreground">
+          最终版确认后，地点只能查看，不能再投票、新增、编辑或删除。
+        </section>
+      ) : (
+        <section className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" className="w-full" onClick={openAddPlace}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            添加地点
+          </Button>
+        </section>
+      )}
 
       <section className="space-y-3">
-        <div className="grid grid-cols-2 gap-1 rounded-[1.125rem] border border-border bg-muted/55 p-1">
-          {filters.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={cn(
-                "focus-ring h-10 rounded-lg px-3 text-sm font-medium transition",
-                filter === item.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-white hover:text-primary"
-              )}
-              onClick={() => setFilter(item.value)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {!isContentLocked ? (
+          <div className="grid grid-cols-2 gap-1 rounded-[1.125rem] border border-border bg-muted/55 p-1">
+            {filters.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={cn(
+                  "focus-ring h-10 rounded-lg px-3 text-sm font-medium transition",
+                  filter === item.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-white hover:text-primary"
+                )}
+                onClick={() => setFilter(item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid gap-3">
           {visibleRankings.map((ranking) => (
@@ -418,14 +436,24 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
               ranking={ranking}
               members={data.members}
               currentMember={currentMember}
-              canManage={canManagePlace(ranking.place, currentMember)}
+              canManage={
+                !isContentLocked && canManagePlace(ranking.place, currentMember)
+              }
+              canVote={!isContentLocked}
               onEdit={() => startEditing(ranking.place)}
               onDelete={() => {
-                if (canManagePlace(ranking.place, currentMember)) {
+                if (
+                  !isContentLocked &&
+                  canManagePlace(ranking.place, currentMember)
+                ) {
                   setPendingDeletePlace(ranking.place);
                 }
               }}
-              onVote={() => setVotingPlaceId(ranking.place.id)}
+              onVote={() => {
+                if (!isContentLocked) {
+                  setVotingPlaceId(ranking.place.id);
+                }
+              }}
             />
           ))}
         </div>
@@ -444,7 +472,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
       </p>
 
       <Modal
-        open={showPlaceModal}
+        open={showPlaceModal && !isContentLocked}
         title={editingPlaceId ? "编辑地点" : "添加地点"}
         description="先选地点类型，再选你对它的初始感觉。"
         onClose={() => {
@@ -531,7 +559,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
         </form>
       </Modal>
 
-      {votingRanking ? (
+      {votingRanking && !isContentLocked ? (
         <PlaceVoteModal
           key={`${votingRanking.place.id}-${currentMember.id}`}
           ranking={votingRanking}
@@ -539,6 +567,11 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
           currentMember={currentMember}
           onClose={() => setVotingPlaceId(null)}
           onVote={(value, reason) => {
+            if (isContentLocked) {
+              setVotingPlaceId(null);
+              return;
+            }
+
             actions.setPlaceVote(
               votingRanking.place.id,
               currentMember.id,
@@ -551,10 +584,14 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
       ) : null}
 
       <DeletePlaceConfirmModal
-        place={pendingDeletePlace}
+        place={isContentLocked ? null : pendingDeletePlace}
         onClose={() => setPendingDeletePlace(null)}
         onConfirm={() => {
-          if (pendingDeletePlace && canManagePlace(pendingDeletePlace, currentMember)) {
+          if (
+            pendingDeletePlace &&
+            !isContentLocked &&
+            canManagePlace(pendingDeletePlace, currentMember)
+          ) {
             actions.deletePlace(pendingDeletePlace.id);
           }
 
@@ -603,6 +640,7 @@ function PlaceCard({
   members,
   currentMember,
   canManage,
+  canVote,
   onEdit,
   onDelete,
   onVote
@@ -611,6 +649,7 @@ function PlaceCard({
   members: TripMember[];
   currentMember: TripMember;
   canManage: boolean;
+  canVote: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onVote: () => void;
@@ -712,11 +751,13 @@ function PlaceCard({
         </div>
       </div>
 
-      <div className="mt-4">
-        <Button type="button" className="w-full sm:w-auto" onClick={onVote}>
-          {currentVote ? "修改投票" : "投票"}
-        </Button>
-      </div>
+      {canVote ? (
+        <div className="mt-4">
+          <Button type="button" className="w-full sm:w-auto" onClick={onVote}>
+            {currentVote ? "修改投票" : "投票"}
+          </Button>
+        </div>
+      ) : null}
     </article>
   );
 }

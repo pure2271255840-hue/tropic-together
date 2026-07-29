@@ -46,7 +46,7 @@ import {
   type ItineraryRoutePlan
 } from "@/features/trip/itinerary-routes";
 import {
-  appleMapsDirectionsUrl,
+  appleMapsSearchUrl,
   googleMapsDirectionsUrl,
   locationInputParts
 } from "@/features/trip/navigation-links";
@@ -105,6 +105,7 @@ import {
   useTripDataStore,
   type TripDataStore
 } from "@/features/trip/trip-data-provider";
+import { isTripContentLocked } from "@/features/trip/trip-lock";
 import { cn } from "@/lib/utils";
 
 type ItineraryPageProps = {
@@ -273,6 +274,7 @@ export function ItineraryPage({
     hotelLocation: ""
   });
   const { data, isLoaded, actions } = useTripDataStore();
+  const isContentLocked = isTripContentLocked(data.trip.phase);
   const currentMember = resolveCurrentTripMember(data, auth.user);
   const isOwner = currentMember?.role === "owner";
   const placeById = useMemo(
@@ -428,6 +430,10 @@ export function ItineraryPage({
   }
 
   function openTripSettingsModal() {
+    if (isContentLocked) {
+      return;
+    }
+
     setTripSettingsForm({
       name: data.trip.name,
       startDate: data.trip.startDate,
@@ -439,6 +445,11 @@ export function ItineraryPage({
 
   function submitTripSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isContentLocked) {
+      return;
+    }
+
     const hotelLocation = locationInputParts(
       tripSettingsForm.hotelLocation,
       data.trip.hotelAddress,
@@ -696,7 +707,7 @@ export function ItineraryPage({
   }
 
   function openAddItem(dayId?: string) {
-    if (!activeVersion) {
+    if (!activeVersion || isContentLocked) {
       return;
     }
 
@@ -711,6 +722,7 @@ export function ItineraryPage({
     event.preventDefault();
 
     if (
+      isContentLocked ||
       !activeVersion ||
       !selectedDayId ||
       !itemForm.title.trim()
@@ -741,7 +753,7 @@ export function ItineraryPage({
   }
 
   async function runAiAction(mode: AiTripActionMode) {
-    if (aiActionState?.status === "running") {
+    if (isContentLocked || aiActionState?.status === "running") {
       return;
     }
 
@@ -802,6 +814,7 @@ export function ItineraryPage({
             (vote) => vote.versionId === activeVersion.id
           )}
           isOwner={isOwner}
+          isContentLocked={isContentLocked}
           isOrganizingWithAi={
             aiActionState?.mode === "organize" &&
             aiActionState.status === "running"
@@ -814,17 +827,34 @@ export function ItineraryPage({
           }
           onBack={backToTripGroups}
           onVote={(value) => {
+            if (isContentLocked) {
+              return;
+            }
+
             setVoteIntent(value);
             setShowVoteModal(true);
           }}
           onAddItem={openAddItem}
           onOrganizeWithAi={() => void runAiAction("organize")}
           onOpenSettings={openTripSettingsModal}
-          onConfirmFinal={() => setPendingConfirmFinalVersionId(activeVersion.id)}
-          onCancelFinal={() => actions.cancelFinalItineraryVersion(activeVersion.id)}
-          onManageItinerary={() => setShowManageItineraryModal(true)}
+          onConfirmFinal={() => {
+            if (!isContentLocked) {
+              setPendingConfirmFinalVersionId(activeVersion.id);
+            }
+          }}
+          onCancelFinal={() => {
+            if (!isContentLocked) {
+              actions.cancelFinalItineraryVersion(activeVersion.id);
+            }
+          }}
+          onManageItinerary={() => {
+            if (!isContentLocked) {
+              setShowManageItineraryModal(true);
+            }
+          }}
           onEditActivity={(item) => {
             if (
+              isContentLocked ||
               item.isLocked ||
               !canManageItineraryItem(item, currentMember, isOwner)
             ) {
@@ -837,6 +867,7 @@ export function ItineraryPage({
           }}
           onDeleteActivity={(item) => {
             if (
+              !isContentLocked &&
               !item.isLocked &&
               canManageItineraryItem(item, currentMember, isOwner)
             ) {
@@ -844,7 +875,10 @@ export function ItineraryPage({
             }
           }}
           onToggleActivityLocked={(item) => {
-            if (!canManageItineraryItem(item, currentMember, isOwner)) {
+            if (
+              isContentLocked ||
+              !canManageItineraryItem(item, currentMember, isOwner)
+            ) {
               return;
             }
 
@@ -859,6 +893,7 @@ export function ItineraryPage({
         <TripGroupWorkspace
           data={data}
           isOwner={isOwner}
+          isContentLocked={isContentLocked}
           isGeneratingWithAi={
             aiActionState?.mode === "generate" &&
             aiActionState.status === "running"
@@ -879,7 +914,7 @@ export function ItineraryPage({
         <>
           <ItineraryVoteModal
             key={`${activeVersion.id}-${currentMember.id}-${voteIntent ?? "none"}`}
-            open={showVoteModal}
+            open={showVoteModal && !isContentLocked}
             version={activeVersion}
             initialValue={voteIntent}
             votes={data.itineraryVotes.filter(
@@ -892,6 +927,12 @@ export function ItineraryPage({
               setShowVoteModal(false);
             }}
             onVote={(value, reason) => {
+              if (isContentLocked) {
+                setVoteIntent(null);
+                setShowVoteModal(false);
+                return;
+              }
+
               actions.setItineraryVote(
                 activeVersion.id,
                 currentMember.id,
@@ -904,14 +945,16 @@ export function ItineraryPage({
           />
 
           <ManageItineraryModal
-            open={showManageItineraryModal}
+            open={showManageItineraryModal && !isContentLocked}
             version={activeVersion}
-            canManageExistingDays={isOwner}
+            canManageExistingDays={isOwner && !isContentLocked}
             onClose={() => setShowManageItineraryModal(false)}
             onAddDay={(input) =>
+              !isContentLocked &&
               actions.addItineraryDay({ ...input, versionId: activeVersion.id })
             }
             onUpdateDay={(dayId, input) =>
+              !isContentLocked &&
               actions.updateItineraryDay({
                 ...input,
                 versionId: activeVersion.id,
@@ -919,17 +962,19 @@ export function ItineraryPage({
               })
             }
             onDeleteDays={(dayIds) =>
+              !isContentLocked &&
               actions.deleteItineraryDays(activeVersion.id, dayIds)
             }
           />
 
           <DeleteItemConfirmModal
-            open={Boolean(pendingDeleteItem)}
+            open={Boolean(pendingDeleteItem) && !isContentLocked}
             item={pendingDeleteItem}
             onClose={() => setPendingDeleteItem(null)}
             onConfirm={() => {
               if (
                 !pendingDeleteItem ||
+                isContentLocked ||
                 pendingDeleteItem.isLocked ||
                 !canManageItineraryItem(pendingDeleteItem, currentMember, isOwner)
               ) {
@@ -943,7 +988,7 @@ export function ItineraryPage({
           />
 
           <Modal
-            open={showAddItemModal}
+            open={showAddItemModal && !isContentLocked}
             title={editingItem ? "编辑活动" : "添加活动"}
             description="活动可以来自 AI 草稿，也可以由成员手动调整。"
             onClose={() => {
@@ -1034,10 +1079,10 @@ export function ItineraryPage({
       ) : null}
 
       <ConfirmFinalVersionModal
-        open={Boolean(pendingConfirmFinalVersionId)}
+        open={Boolean(pendingConfirmFinalVersionId) && !isContentLocked}
         onClose={() => setPendingConfirmFinalVersionId(null)}
         onConfirm={() => {
-          if (pendingConfirmFinalVersionId) {
+          if (pendingConfirmFinalVersionId && !isContentLocked) {
             actions.confirmItineraryVersion(pendingConfirmFinalVersionId);
           }
 
@@ -1174,7 +1219,7 @@ export function ItineraryPage({
       </Modal>
 
       <Modal
-        open={showTripSettingsModal}
+        open={showTripSettingsModal && !isContentLocked}
         title="行程设置"
         description={data.trip.name}
         onClose={() => setShowTripSettingsModal(false)}
@@ -1657,18 +1702,12 @@ function HotelLocationLine({
         </p>
       ) : null}
       {routePlan ? (
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
           <Route className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-          <a
-            className="focus-ring inline-flex items-center gap-1 rounded-md font-medium text-primary hover:bg-secondary"
-            href={routePlan.href}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {routePlan.label}
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-          </a>
-        </p>
+          <span className="font-medium text-primary">{routePlan.label}</span>
+          <ExternalNavLink href={routePlan.appleHref} label="Apple" />
+          <ExternalNavLink href={routePlan.href} label="Google" />
+        </div>
       ) : null}
     </div>
   );
@@ -1769,6 +1808,7 @@ function TripGroupCard({
 function TripGroupWorkspace({
   data,
   isOwner,
+  isContentLocked,
   isGeneratingWithAi,
   aiError,
   onBack,
@@ -1777,6 +1817,7 @@ function TripGroupWorkspace({
 }: {
   data: TripDataStore["data"];
   isOwner: boolean;
+  isContentLocked: boolean;
   isGeneratingWithAi: boolean;
   aiError?: string;
   onBack: () => void;
@@ -1810,7 +1851,7 @@ function TripGroupWorkspace({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Badge tone="teal">{planPhaseLabels[data.trip.phase]}</Badge>
-              {isOwner ? (
+              {isOwner && !isContentLocked ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -1835,7 +1876,7 @@ function TripGroupWorkspace({
               href={`/trip/${data.trip.id}/places`}
             >
               <MapPin className="h-4 w-4" aria-hidden="true" />
-              管理地点
+              {isContentLocked ? "查看地点" : "管理地点"}
             </Link>
           </div>
         </div>
@@ -1844,24 +1885,34 @@ function TripGroupWorkspace({
 
       {data.places.length === 0 ? (
         <section className="surface-card-muted text-center">
-          <p className="text-base font-semibold">要先添加地点才能生成草稿</p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            AI 会根据行程标题、日期时间、地点池，以及大家的想去/不想去理由生成行程草稿。
+          <p className="text-base font-semibold">
+            {isContentLocked ? "最终版已锁定" : "要先添加地点才能生成草稿"}
           </p>
-          <Link
-            className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.22)] transition hover:bg-primary/90"
-            href={`/trip/${data.trip.id}/places`}
-          >
-            去添加地点
-          </Link>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {isContentLocked
+              ? "最终版确认后，地点和行程内容只能查看，不能再新增或编辑。"
+              : "AI 会根据行程标题、日期时间、地点池，以及大家的想去/不想去理由生成行程草稿。"}
+          </p>
+          {!isContentLocked ? (
+            <Link
+              className="focus-ring mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_10px_24px_rgba(242,99,76,0.22)] transition hover:bg-primary/90"
+              href={`/trip/${data.trip.id}/places`}
+            >
+              去添加地点
+            </Link>
+          ) : null}
         </section>
       ) : (
         <section className="surface-card">
-          <p className="text-base font-semibold">可以生成第一版草稿</p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            已有 {data.places.length} 个地点。AI 会使用行程标题、日期时间、地点和投票理由整理出第一版草稿。
+          <p className="text-base font-semibold">
+            {isContentLocked ? "最终版已锁定" : "可以生成第一版草稿"}
           </p>
-          {isOwner ? (
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {isContentLocked
+              ? "最终版确认后，地点和行程内容只能查看，不能再投票、新增、编辑或删除。"
+              : `已有 ${data.places.length} 个地点。AI 会使用行程标题、日期时间、地点和投票理由整理出第一版草稿。`}
+          </p>
+          {isOwner && !isContentLocked ? (
             <Button
               type="button"
               className="mt-4"
@@ -1874,11 +1925,11 @@ function TripGroupWorkspace({
               ) : null}
               {isGeneratingWithAi ? "生成中" : "生成 AI 草稿"}
             </Button>
-          ) : (
+          ) : !isContentLocked ? (
             <p className="mt-4 text-sm text-muted-foreground">
               等待发起人生成草稿。
             </p>
-          )}
+          ) : null}
           {aiError ? (
             <p className="mt-3 rounded-lg border border-coral/20 bg-secondary px-3 py-2 text-sm leading-6 text-coral">
               {aiError}
@@ -1900,6 +1951,7 @@ function ItineraryDetail({
   members,
   votes,
   isOwner,
+  isContentLocked,
   isOrganizingWithAi,
   aiError,
   onBack,
@@ -1928,6 +1980,7 @@ function ItineraryDetail({
     reason: string;
   }>;
   isOwner: boolean;
+  isContentLocked: boolean;
   isOrganizingWithAi: boolean;
   aiError?: string;
   onBack: () => void;
@@ -1979,7 +2032,7 @@ function ItineraryDetail({
                 <Badge tone={version.status === "final" ? "teal" : "coral"}>
                   {versionBadgeLabel}
                 </Badge>
-                {isOwner ? (
+                {isOwner && !isContentLocked ? (
                   <Button
                     type="button"
                     size="sm"
@@ -2002,7 +2055,9 @@ function ItineraryDetail({
                 生成于 {formatDateTime(version.createdAt)}
               </p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                活动是可编辑草稿，成员可以手动调整。
+                {isContentLocked
+                  ? "最终版已确认，地点和行程内容只能查看。"
+                  : "活动是可编辑草稿，成员可以手动调整。"}
               </p>
               <HotelLocationLine
                 address={hotelAddress}
@@ -2010,7 +2065,7 @@ function ItineraryDetail({
                 routePlan={routePlan}
               />
             </div>
-            {isOwner ? (
+            {isOwner && !isContentLocked ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -2025,32 +2080,48 @@ function ItineraryDetail({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button
-              type="button"
-              size="sm"
-              variant={currentVote?.value === "up" ? "quiet" : "outline"}
-              className="rounded-full"
-              onClick={() => onVote("up")}
-            >
-              <ThumbsUp className="h-4 w-4" aria-hidden="true" />
-              {itineraryVoteLabels.up} {upCount}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={currentVote?.value === "down" ? "quiet" : "outline"}
-              className="rounded-full"
-              onClick={() => onVote("down")}
-            >
-              <ThumbsDown className="h-4 w-4" aria-hidden="true" />
-              {itineraryVoteLabels.down} {downCount}
-            </Button>
+            {isContentLocked ? (
+              <>
+                <Badge tone="outline">
+                  <ThumbsUp className="mr-1 h-3 w-3 text-teal" aria-hidden="true" />
+                  {itineraryVoteLabels.up} {upCount}
+                </Badge>
+                <Badge tone="outline">
+                  <ThumbsDown className="mr-1 h-3 w-3 text-coral" aria-hidden="true" />
+                  {itineraryVoteLabels.down} {downCount}
+                </Badge>
+                <Badge tone="teal">最终版已锁定</Badge>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={currentVote?.value === "up" ? "quiet" : "outline"}
+                  className="rounded-full"
+                  onClick={() => onVote("up")}
+                >
+                  <ThumbsUp className="h-4 w-4" aria-hidden="true" />
+                  {itineraryVoteLabels.up} {upCount}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={currentVote?.value === "down" ? "quiet" : "outline"}
+                  className="rounded-full"
+                  onClick={() => onVote("down")}
+                >
+                  <ThumbsDown className="h-4 w-4" aria-hidden="true" />
+                  {itineraryVoteLabels.down} {downCount}
+                </Button>
+              </>
+            )}
           </div>
 
         </div>
       </section>
 
-      {isOwner ? (
+      {isOwner && !isContentLocked ? (
         <section className="flex flex-wrap justify-end gap-2">
           <Button
             type="button"
@@ -2092,7 +2163,7 @@ function ItineraryDetail({
         currentMember={currentMember}
         members={members}
         isOwner={isOwner}
-        canEdit
+        canEdit={!isContentLocked}
         onAddItem={onAddItem}
         onEditActivity={onEditActivity}
         onDeleteActivity={onDeleteActivity}
@@ -2174,16 +2245,14 @@ function Timeline({
                   {day.title} / {day.city}
                 </h2>
                 {routePlan ? (
-                  <a
-                    className="focus-ring mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-primary/20 bg-secondary px-3 text-sm font-medium text-primary transition hover:bg-secondary/75"
-                    href={routePlan.href}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <Route className="h-4 w-4" aria-hidden="true" />
-                    {routePlan.label}
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  </a>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary/20 bg-secondary px-3 text-sm font-medium text-primary">
+                      <Route className="h-4 w-4" aria-hidden="true" />
+                      {routePlan.label}
+                    </span>
+                    <ExternalNavLink href={routePlan.appleHref} label="Apple" />
+                    <ExternalNavLink href={routePlan.href} label="Google" />
+                  </div>
                 ) : null}
               </div>
               {canEdit ? (
@@ -2216,11 +2285,10 @@ function Timeline({
                     item={item}
                     place={item.placeId ? placeById.get(item.placeId) : undefined}
                     members={members}
-                    canManage={canManageItineraryItem(
-                      item,
-                      currentMember,
-                      isOwner
-                    )}
+                    canManage={
+                      canEdit &&
+                      canManageItineraryItem(item, currentMember, isOwner)
+                    }
                     hasTimeConflict={conflictItemIds.has(item.id)}
                     onEditActivity={onEditActivity}
                     onDeleteActivity={onDeleteActivity}
@@ -2349,7 +2417,7 @@ function TimelineItem({
           <div className="mt-3 flex flex-wrap gap-2">
             {place ? (
               <>
-                <ExternalNavLink href={appleMapsDirectionsUrl(place)} label="Apple" />
+                <ExternalNavLink href={appleMapsSearchUrl(place)} label="Apple" />
                 <ExternalNavLink href={googleMapsDirectionsUrl(place)} label="Google" />
               </>
             ) : null}
@@ -2906,7 +2974,7 @@ function MemberList({
             <span>{member.displayName}</span>
             {isOwner ? (
               <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">
-                管理者
+                发起人
               </span>
             ) : null}
           </>

@@ -208,12 +208,32 @@ export function appleMapsSearchUrl(place: MapDestination) {
 }
 
 export function appleMapsDirectionsUrl(place: MapDestination) {
-  const coordinate = coordinateFor(place);
+  return appleMapsSearchUrl(place);
+}
+
+function appleMapsRouteDestinationFor(place: MapDestination) {
+  return destinationFor(place) || appleTextDestinationFor(place);
+}
+
+export function appleMapsRouteUrl(places: MapDestination[]) {
+  const routePlaces = places.filter(Boolean);
+
+  if (routePlaces.length === 0) {
+    return "https://maps.apple.com";
+  }
+
+  if (routePlaces.length === 1) {
+    return appleMapsSearchUrl(routePlaces[0]);
+  }
+
+  const origin = encodeURIComponent(
+    appleMapsRouteDestinationFor(routePlaces[0])
+  );
   const destination = encodeURIComponent(
-    coordinate ? coordinateString(coordinate) : appleTextDestinationFor(place)
+    appleMapsRouteDestinationFor(routePlaces[routePlaces.length - 1])
   );
 
-  return `https://maps.apple.com/?daddr=${destination}&dirflg=d`;
+  return `https://maps.apple.com/?saddr=${origin}&daddr=${destination}&dirflg=d`;
 }
 
 export function googleMapsRouteUrl(places: MapDestination[]) {

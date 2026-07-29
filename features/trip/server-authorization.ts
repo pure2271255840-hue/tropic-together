@@ -9,6 +9,7 @@ import {
   memberDisplayNameExists,
   memberHasTripContributions
 } from "./member-actions";
+import { isTripContentLocked } from "./trip-lock";
 import type { TripMember, TripPhase1Data } from "./types";
 
 export type TripAccessResult =
@@ -85,6 +86,17 @@ function tripDataExceptMembershipSignature(data: TripPhase1Data) {
     currentMemberId: "",
     members: [],
     updatedAt: ""
+  });
+}
+
+function tripContentSignature(data: TripPhase1Data) {
+  return JSON.stringify({
+    trip: data.trip,
+    places: data.places,
+    placeVotes: data.placeVotes,
+    itineraryVersions: data.itineraryVersions,
+    currentItineraryVersionId: data.currentItineraryVersionId,
+    itineraryVotes: data.itineraryVotes
   });
 }
 
@@ -218,6 +230,17 @@ export async function saveAuthorizedTripData(
         message: memberChangeError
       };
     }
+  }
+
+  if (
+    isTripContentLocked(currentData.trip.phase) &&
+    tripContentSignature(data) !== tripContentSignature(currentData)
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      message: "最终版已确认，不能再修改地点或行程。"
+    };
   }
 
   if (currentMember.role === "owner" && !userCanManageTrip(data, user)) {

@@ -328,8 +328,12 @@ function ItineraryReminderCard({
       </div>
 
       {routePlan ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <ExternalNavLink href={routePlan.href} label={routePlan.label} inverse />
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="inline-flex h-9 items-center rounded-lg border border-primary/20 bg-white px-3 text-sm font-medium text-primary">
+            {routePlan.label}
+          </span>
+          <ExternalNavLink href={routePlan.appleHref} label="Apple" inverse />
+          <ExternalNavLink href={routePlan.href} label="Google" inverse />
         </div>
       ) : null}
 
