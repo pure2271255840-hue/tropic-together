@@ -1717,18 +1717,13 @@ function CopyInviteButton({
   );
   const copyValue = normalizeInviteCode(inviteCode || inviteUrl || "");
 
-  useEffect(() => {
-    if (copyState === "idle") {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => setCopyState("idle"), 1800);
-
-    return () => window.clearTimeout(timer);
-  }, [copyState]);
-
   const isCopied = copyState === "copied";
   const isFailed = copyState === "failed";
+  const copyStatusLabel = isCopied
+    ? "已复制邀请码"
+    : isFailed
+      ? "复制失败"
+      : "复制邀请码";
 
   return (
     <Button
@@ -1739,8 +1734,8 @@ function CopyInviteButton({
           "h-9 shrink-0 gap-1.5 px-2 text-xs sm:h-10 sm:px-3 sm:text-sm"
       )}
       disabled={!copyValue}
-      aria-label={isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
-      title={isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
+      aria-label={copyStatusLabel}
+      title={copyStatusLabel}
       onClick={async () => {
         setCopyState((await copyText(copyValue)) ? "copied" : "failed");
       }}
@@ -1751,7 +1746,7 @@ function CopyInviteButton({
         <Copy className="h-4 w-4" aria-hidden="true" />
       )}
       <span className={cn(compactOnMobile && "whitespace-nowrap")}>
-        {isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
+        复制邀请码
       </span>
     </Button>
   );
@@ -1838,7 +1833,32 @@ function TripGroupCard({
   const currentTripMember = currentUserMemberForGroup(group, currentUser);
 
   return (
-    <article className="corner-mark surface-card">
+    <article
+      className="focus-ring corner-mark surface-card cursor-pointer transition hover:border-primary/20 hover:shadow-lift"
+      role="button"
+      tabIndex={0}
+      aria-label={`进入行程 ${group.name}`}
+      onClick={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest("button, a, input, textarea, select")
+        ) {
+          return;
+        }
+
+        onOpenTrip(group.id);
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenTrip(group.id);
+        }
+      }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold leading-snug">{group.name}</h2>
@@ -1855,22 +1875,20 @@ function TripGroupCard({
         <SmallStat label="成员" value={`${group.members?.length ?? 0}`} />
         <SmallStat label="地点" value={`${group.placeCount}`} />
       </div>
-      <MemberList
-        members={group.members ?? []}
-        currentMemberId={currentTripMember?.id}
-        onEditCurrentMember={(member) =>
-          onEditTripMemberNickname(group, member)
-        }
-      />
+      <div onClick={(event) => event.stopPropagation()}>
+        <MemberList
+          members={group.members ?? []}
+          currentMemberId={currentTripMember?.id}
+          onEditCurrentMember={(member) =>
+            onEditTripMemberNickname(group, member)
+          }
+        />
+      </div>
 
-      <div className="mt-4 flex flex-nowrap items-center gap-1.5">
-        <Button
-          type="button"
-          className="h-9 min-w-0 flex-1 gap-1.5 px-2 text-xs sm:h-10 sm:flex-none sm:px-3 sm:text-sm"
-          onClick={() => onOpenTrip(group.id)}
-        >
-          进入行程
-        </Button>
+      <div
+        className="mt-4 flex flex-nowrap items-center gap-2"
+        onClick={(event) => event.stopPropagation()}
+      >
         <CopyInviteButton
           inviteCode={group.inviteCode}
           inviteUrl={group.inviteUrl}
