@@ -9,7 +9,7 @@ type TripListPayload = {
 };
 
 type TripDataPayload = {
-  data: TripPhase1Data;
+  data?: TripPhase1Data | null;
   message?: string;
 };
 

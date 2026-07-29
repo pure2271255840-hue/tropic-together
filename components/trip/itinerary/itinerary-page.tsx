@@ -1758,13 +1758,18 @@ function CopyInviteButton({
 function HotelLocationLine({
   address,
   mapUrl,
+  tripDestinations = [],
   routePlan
 }: {
   address?: string;
   mapUrl?: string;
+  tripDestinations?: string[];
   routePlan?: ItineraryRoutePlan | null;
 }) {
   const hotelStop = hotelStopForLocation(address, mapUrl);
+  const hotelMapHref = hotelStop
+    ? defaultPlaceMapUrl(hotelStop, { destinations: tripDestinations })
+    : "";
 
   if (!hotelStop && !routePlan) {
     return null;
@@ -1775,7 +1780,14 @@ function HotelLocationLine({
       {hotelStop ? (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <House className="h-4 w-4 shrink-0 text-teal" aria-hidden="true" />
-          <span>{address?.trim() || "酒店地图链接"}</span>
+          <a
+            className="focus-ring min-w-0 rounded text-muted-foreground underline decoration-border underline-offset-4 transition hover:text-primary hover:decoration-primary"
+            href={hotelMapHref}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {address?.trim() || "酒店地图链接"}
+          </a>
         </p>
       ) : null}
       {routePlan ? (
@@ -1936,6 +1948,7 @@ function TripGroupWorkspace({
               <HotelLocationLine
                 address={data.trip.hotelAddress}
                 mapUrl={data.trip.hotelMapUrl}
+                tripDestinations={data.trip.destinations}
               />
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -2156,6 +2169,7 @@ function ItineraryDetail({
               <HotelLocationLine
                 address={hotelAddress}
                 mapUrl={hotelMapUrl}
+                tripDestinations={tripDestinations}
                 routePlan={routePlan}
               />
             </div>

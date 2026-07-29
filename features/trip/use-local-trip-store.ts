@@ -101,6 +101,14 @@ function currentMemberCanCancelFinalVersion(data: TripPhase1Data) {
   );
 }
 
+function canSyncRemoteTripData(data: TripPhase1Data, tripId: string) {
+  return (
+    data.trip.id === tripId &&
+    data.members.length > 0 &&
+    Boolean(data.currentMemberId)
+  );
+}
+
 export function useLocalTripStore(tripId: string) {
   const [data, setData] = useState<TripPhase1Data>(() =>
     createSeedTripData(tripId)
@@ -108,6 +116,7 @@ export function useLocalTripStore(tripId: string) {
   const [isLoaded, setIsLoaded] = useState(false);
   const pendingCommitRef = useRef<TripPhase1Data | null>(null);
   const latestDataRef = useRef(data);
+  const canUseRemoteUpdates = canSyncRemoteTripData(data, tripId);
 
   useEffect(() => {
     latestDataRef.current = data;
@@ -187,7 +196,11 @@ export function useLocalTripStore(tripId: string) {
   }, [tripId]);
 
   useEffect(() => {
-    if (!isLoaded || !isRemoteTripStorageEnabled()) {
+    if (
+      !isLoaded ||
+      !isRemoteTripStorageEnabled() ||
+      !canUseRemoteUpdates
+    ) {
       return undefined;
     }
 
@@ -227,19 +240,20 @@ export function useLocalTripStore(tripId: string) {
       window.removeEventListener("focus", syncVisibleRemoteTripData);
       document.removeEventListener("visibilitychange", syncVisibleRemoteTripData);
     };
-  }, [applyRemoteTripData, isLoaded, tripId]);
+  }, [applyRemoteTripData, canUseRemoteUpdates, isLoaded, tripId]);
 
   useEffect(() => {
     if (
       !isLoaded ||
       !isRemoteTripStorageEnabled() ||
-      !isTripRealtimeConfigured()
+      !isTripRealtimeConfigured() ||
+      !canUseRemoteUpdates
     ) {
       return undefined;
     }
 
     return subscribeToTripWorkspace(tripId, applyRemoteTripData);
-  }, [applyRemoteTripData, isLoaded, tripId]);
+  }, [applyRemoteTripData, canUseRemoteUpdates, isLoaded, tripId]);
 
   const commit = useCallback((producer: TripProducer) => {
     setData((current) => {

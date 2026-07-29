@@ -31,10 +31,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const result = await requireReadableTrip(tripId, user);
 
     if (!result.ok) {
-      return NextResponse.json(
-        { message: result.message },
-        { status: result.status }
-      );
+      return NextResponse.json({ data: null, message: result.message });
     }
 
     return NextResponse.json({ data: result.data });
