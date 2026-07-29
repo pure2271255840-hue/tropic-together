@@ -65,6 +65,13 @@ body {
     @apply placeholder:text-muted-foreground/65;
   }
 
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   button,
   a,
   input,

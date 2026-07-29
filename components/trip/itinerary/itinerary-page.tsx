@@ -1645,10 +1645,12 @@ function TripGroupSection({
 
 function CopyInviteButton({
   inviteCode,
-  inviteUrl
+  inviteUrl,
+  compactOnMobile = false
 }: {
   inviteCode?: string;
   inviteUrl?: string;
+  compactOnMobile?: boolean;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle"
@@ -1672,7 +1674,12 @@ function CopyInviteButton({
     <Button
       type="button"
       variant={isCopied ? "quiet" : "outline"}
+      className={cn(
+        compactOnMobile && "h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
+      )}
       disabled={!copyValue}
+      aria-label={isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
+      title={isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
       onClick={async () => {
         setCopyState((await copyText(copyValue)) ? "copied" : "failed");
       }}
@@ -1682,7 +1689,9 @@ function CopyInviteButton({
       ) : (
         <Copy className="h-4 w-4" aria-hidden="true" />
       )}
-      {isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
+      <span className={cn(compactOnMobile && "hidden sm:inline")}>
+        {isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
+      </span>
     </Button>
   );
 }
@@ -1770,40 +1779,55 @@ function TripGroupCard({
         }
       />
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button type="button" onClick={() => onOpenTrip(group.id)}>
+      <div className="mt-4 flex flex-nowrap gap-2">
+        <Button
+          type="button"
+          className="min-w-0 flex-1 px-3 sm:flex-none sm:px-4"
+          onClick={() => onOpenTrip(group.id)}
+        >
           进入行程
         </Button>
         <CopyInviteButton
           inviteCode={group.inviteCode}
           inviteUrl={group.inviteUrl}
+          compactOnMobile
         />
         {canDelete ? (
           <Button
             type="button"
             variant="outline"
+            className="h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
             onClick={() => onDeleteTrip(group)}
             disabled={isDeleting}
             isLoading={isDeleting}
+            aria-label={isDeleting ? "删除中" : "删除"}
+            title={isDeleting ? "删除中" : "删除"}
           >
             {!isDeleting ? (
               <Trash2 className="h-4 w-4" aria-hidden="true" />
             ) : null}
-            {isDeleting ? "删除中" : "删除"}
+            <span className="hidden sm:inline">
+              {isDeleting ? "删除中" : "删除"}
+            </span>
           </Button>
         ) : null}
         {canLeave && currentTripMember?.role === "member" ? (
           <Button
             type="button"
             variant="outline"
+            className="h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
             onClick={() => onLeaveTrip(group)}
             disabled={isLeaving}
             isLoading={isLeaving}
+            aria-label={isLeaving ? "退出中" : "退出行程"}
+            title={isLeaving ? "退出中" : "退出行程"}
           >
             {!isLeaving ? (
               <LogOut className="h-4 w-4" aria-hidden="true" />
             ) : null}
-            {isLeaving ? "退出中" : "退出行程"}
+            <span className="hidden sm:inline">
+              {isLeaving ? "退出中" : "退出行程"}
+            </span>
           </Button>
         ) : null}
       </div>
