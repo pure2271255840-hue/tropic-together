@@ -4,7 +4,10 @@ import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ticket } from "lucide-react";
 import { AuthCard } from "@/components/trip/me/auth-card";
-import { JoinNicknameModal } from "@/components/trip/me/join-nickname-modal";
+import {
+  AlreadyJoinedTripModal,
+  JoinNicknameModal
+} from "@/components/trip/me/join-nickname-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuthSession } from "@/features/auth/use-auth-session";
@@ -14,6 +17,11 @@ import { normalizeInviteCode } from "@/features/trip/invite-code";
 
 type JoinInvitePageProps = {
   inviteCode: string;
+};
+
+type AlreadyJoinedTripState = {
+  tripId: string;
+  displayName: string;
 };
 
 export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
@@ -27,11 +35,14 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
   const [joinError, setJoinError] = useState("");
   const [isJoining, setIsJoining] = useState(false);
   const [showJoinNicknameModal, setShowJoinNicknameModal] = useState(false);
+  const [alreadyJoinedTrip, setAlreadyJoinedTrip] =
+    useState<AlreadyJoinedTripState | null>(null);
   const accountDisplayName = auth.user?.displayName || auth.user?.username || "";
 
   function openJoinNicknameModal() {
     setDisplayName("");
     setJoinError("");
+    setAlreadyJoinedTrip(null);
     setShowJoinNicknameModal(true);
   }
 
@@ -49,6 +60,15 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
       const result = await joinTripWithInvite(normalizedInviteCode, displayName);
 
       setActiveTripMemberId(result.tripId, result.memberId);
+      if (result.alreadyJoined) {
+        setShowJoinNicknameModal(false);
+        setAlreadyJoinedTrip({
+          tripId: result.tripId,
+          displayName: result.displayName
+        });
+        return;
+      }
+
       router.push(`/trip/${result.tripId}/itinerary?open=detail`);
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : "暂时无法加入行程。");
@@ -103,6 +123,18 @@ export function JoinInvitePage({ inviteCode }: JoinInvitePageProps) {
               }
             }}
             onSubmit={submitJoin}
+          />
+          <AlreadyJoinedTripModal
+            open={Boolean(alreadyJoinedTrip)}
+            displayName={alreadyJoinedTrip?.displayName}
+            onClose={() => setAlreadyJoinedTrip(null)}
+            onEnterTrip={() => {
+              if (!alreadyJoinedTrip) {
+                return;
+              }
+
+              router.push(`/trip/${alreadyJoinedTrip.tripId}/itinerary?open=detail`);
+            }}
           />
         </section>
       ) : (

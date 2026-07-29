@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -57,6 +64,11 @@ type PlacesPageProps = {
 };
 
 type PlaceFilter = "pending" | "ranking";
+
+type PlaceVoteDetailsState = {
+  placeId: string;
+  value: PlaceVoteValue;
+};
 
 type PlaceFormState = {
   name: string;
@@ -151,6 +163,8 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   const [filter, setFilter] = useState<PlaceFilter>("pending");
   const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
   const [votingPlaceId, setVotingPlaceId] = useState<string | null>(null);
+  const [voteDetails, setVoteDetails] =
+    useState<PlaceVoteDetailsState | null>(null);
   const [pendingDeletePlace, setPendingDeletePlace] =
     useState<TravelPlace | null>(null);
   const [showPlaceModal, setShowPlaceModal] = useState(false);
@@ -175,6 +189,9 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
   });
   const votingRanking =
     votingPlaceId ? rankings.find((ranking) => ranking.place.id === votingPlaceId) : undefined;
+  const voteDetailsRanking = voteDetails
+    ? rankings.find((ranking) => ranking.place.id === voteDetails.placeId)
+    : undefined;
 
   const refreshTripGroups = useCallback(async (showLoading = false) => {
     if (!auth.user) {
@@ -455,6 +472,9 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
                   setVotingPlaceId(ranking.place.id);
                 }
               }}
+              onShowVoteDetails={(value) =>
+                setVoteDetails({ placeId: ranking.place.id, value })
+              }
             />
           ))}
         </div>
@@ -584,6 +604,15 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
         />
       ) : null}
 
+      {voteDetails && voteDetailsRanking ? (
+        <PlaceVoteDetailsModal
+          ranking={voteDetailsRanking}
+          value={voteDetails.value}
+          members={data.members}
+          onClose={() => setVoteDetails(null)}
+        />
+      ) : null}
+
       <DeletePlaceConfirmModal
         place={isContentLocked ? null : pendingDeletePlace}
         onClose={() => setPendingDeletePlace(null)}
@@ -645,7 +674,8 @@ function PlaceCard({
   canVote,
   onEdit,
   onDelete,
-  onVote
+  onVote,
+  onShowVoteDetails
 }: {
   ranking: RankedPlace;
   tripDestinations: string[];
@@ -656,6 +686,7 @@ function PlaceCard({
   onEdit: () => void;
   onDelete: () => void;
   onVote: () => void;
+  onShowVoteDetails: (value: PlaceVoteValue) => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { place, votes } = ranking;
@@ -746,14 +777,20 @@ function PlaceCard({
         ) : null}
         {place.notes ? <p className="text-muted-foreground">{place.notes}</p> : null}
         <div className="flex flex-wrap gap-2">
-          <Badge tone="outline">
-            <ThumbsUp className="mr-1 h-3 w-3 text-teal" aria-hidden="true" />
-            {placeVoteLabels.up} {ranking.upCount}
-          </Badge>
-          <Badge tone="outline">
-            <ThumbsDown className="mr-1 h-3 w-3 text-coral" aria-hidden="true" />
-            {placeVoteLabels.down} {ranking.downCount}
-          </Badge>
+          <VoteSummaryButton
+            count={ranking.upCount}
+            icon={<ThumbsUp className="h-3 w-3 text-teal" aria-hidden="true" />}
+            label={placeVoteLabels.up}
+            onClick={() => onShowVoteDetails("up")}
+          />
+          <VoteSummaryButton
+            count={ranking.downCount}
+            icon={
+              <ThumbsDown className="h-3 w-3 text-coral" aria-hidden="true" />
+            }
+            label={placeVoteLabels.down}
+            onClick={() => onShowVoteDetails("down")}
+          />
         </div>
       </div>
 
@@ -765,6 +802,83 @@ function PlaceCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function VoteSummaryButton({
+  count,
+  icon,
+  label,
+  onClick
+}: {
+  count: number;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="focus-ring inline-flex min-h-7 items-center rounded-full border border-border bg-white/85 px-3 py-1 text-xs font-medium text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition hover:border-primary/25 hover:bg-secondary/45 hover:text-primary"
+      onClick={onClick}
+      aria-label={`查看${label}投票详情`}
+    >
+      <span className="mr-1">{icon}</span>
+      {label} {count}
+    </button>
+  );
+}
+
+function PlaceVoteDetailsModal({
+  ranking,
+  value,
+  members,
+  onClose
+}: {
+  ranking: RankedPlace;
+  value: PlaceVoteValue;
+  members: TripMember[];
+  onClose: () => void;
+}) {
+  const votes = ranking.votes.filter((vote) => vote.value === value);
+  const label = placeVoteLabels[value];
+
+  return (
+    <Modal
+      open
+      title={`${label}详情`}
+      description={ranking.place.name}
+      onClose={onClose}
+    >
+      <div className="space-y-3">
+        {votes.length > 0 ? (
+          <div className="divide-y divide-border rounded-[1rem] border border-border bg-white">
+            {votes.map((vote) => (
+              <div key={vote.id} className="p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium">{memberName(members, vote.memberId)}</p>
+                  <Badge tone={value === "up" ? "teal" : "sunset"}>
+                    {label}
+                  </Badge>
+                </div>
+                {vote.reason ? (
+                  <p className="mt-2 leading-6 text-muted-foreground">
+                    {vote.reason}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[1rem] border border-dashed border-border bg-muted/40 p-4 text-sm leading-6 text-muted-foreground">
+            还没有成员投这个标签。
+          </div>
+        )}
+        <Button type="button" variant="outline" className="w-full" onClick={onClose}>
+          关闭
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -803,7 +917,7 @@ function PlaceVoteModal({
             variant={selectedVote === "up" ? "quiet" : "outline"}
             onClick={() => setSelectedVote("up")}
           >
-            <ThumbsUp className="h-4 w-4" aria-hidden="true" />
+            <ThumbsUp className="mr-1 h-3 w-3 text-teal" aria-hidden="true" />
             {placeVoteLabels.up} {ranking.upCount}
           </Button>
           <Button
@@ -811,7 +925,7 @@ function PlaceVoteModal({
             variant={selectedVote === "down" ? "quiet" : "outline"}
             onClick={() => setSelectedVote("down")}
           >
-            <ThumbsDown className="h-4 w-4" aria-hidden="true" />
+            <ThumbsDown className="mr-1 h-3 w-3 text-coral" aria-hidden="true" />
             {placeVoteLabels.down} {ranking.downCount}
           </Button>
         </div>

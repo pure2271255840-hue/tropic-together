@@ -9,7 +9,10 @@ import {
   UserRound
 } from "lucide-react";
 import { AuthCard } from "@/components/trip/me/auth-card";
-import { JoinNicknameModal } from "@/components/trip/me/join-nickname-modal";
+import {
+  AlreadyJoinedTripModal,
+  JoinNicknameModal
+} from "@/components/trip/me/join-nickname-modal";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useAuthSession } from "@/features/auth/use-auth-session";
@@ -21,6 +24,11 @@ type MePageProps = {
   tripId: string;
 };
 
+type AlreadyJoinedTripState = {
+  tripId: string;
+  displayName: string;
+};
+
 export function MePage({ tripId }: MePageProps) {
   const router = useRouter();
   const auth = useAuthSession();
@@ -29,6 +37,8 @@ export function MePage({ tripId }: MePageProps) {
   const [joinError, setJoinError] = useState("");
   const [isJoining, setIsJoining] = useState(false);
   const [showJoinNicknameModal, setShowJoinNicknameModal] = useState(false);
+  const [alreadyJoinedTrip, setAlreadyJoinedTrip] =
+    useState<AlreadyJoinedTripState | null>(null);
   const [profileDisplayName, setProfileDisplayName] = useState("");
   const [showProfileNameModal, setShowProfileNameModal] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -83,6 +93,7 @@ export function MePage({ tripId }: MePageProps) {
 
     setDisplayName("");
     setJoinError("");
+    setAlreadyJoinedTrip(null);
     setShowJoinNicknameModal(true);
   }
 
@@ -100,6 +111,15 @@ export function MePage({ tripId }: MePageProps) {
       const result = await joinTripWithInvite(inviteCode, displayName);
 
       setActiveTripMemberId(result.tripId, result.memberId);
+      if (result.alreadyJoined) {
+        setShowJoinNicknameModal(false);
+        setAlreadyJoinedTrip({
+          tripId: result.tripId,
+          displayName: result.displayName
+        });
+        return;
+      }
+
       router.push(`/trip/${result.tripId}/itinerary?open=detail`);
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : "暂时无法加入行程。");
@@ -205,6 +225,18 @@ export function MePage({ tripId }: MePageProps) {
               }
             }}
             onSubmit={submitJoin}
+          />
+          <AlreadyJoinedTripModal
+            open={Boolean(alreadyJoinedTrip)}
+            displayName={alreadyJoinedTrip?.displayName}
+            onClose={() => setAlreadyJoinedTrip(null)}
+            onEnterTrip={() => {
+              if (!alreadyJoinedTrip) {
+                return;
+              }
+
+              router.push(`/trip/${alreadyJoinedTrip.tripId}/itinerary?open=detail`);
+            }}
           />
           <Modal
             open={showProfileNameModal}

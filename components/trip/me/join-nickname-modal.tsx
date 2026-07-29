@@ -16,6 +16,13 @@ type JoinNicknameModalProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
+type AlreadyJoinedTripModalProps = {
+  open: boolean;
+  displayName?: string;
+  onClose: () => void;
+  onEnterTrip: () => void;
+};
+
 export function JoinNicknameModal({
   open,
   accountDisplayName,
@@ -65,6 +72,41 @@ export function JoinNicknameModal({
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+export function AlreadyJoinedTripModal({
+  open,
+  displayName,
+  onClose,
+  onEnterTrip
+}: AlreadyJoinedTripModalProps) {
+  const description = displayName
+    ? `你已经以「${displayName}」加入过这个行程，可以直接进入。`
+    : "你已经加入过这个行程，可以直接进入。";
+
+  return (
+    <Modal
+      open={open}
+      title="已经加入过这个行程"
+      description={description}
+      onClose={onClose}
+    >
+      <div className="grid gap-3">
+        <p className="rounded-lg border border-border bg-secondary/55 px-3 py-2 text-sm leading-6 text-muted-foreground">
+          不会重复创建成员，也不会覆盖原来的行程昵称。
+        </p>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button type="button" onClick={onEnterTrip}>
+            <UsersRound className="h-4 w-4" aria-hidden="true" />
+            进入行程
+          </Button>
+        </div>
+      </div>
     </Modal>
   );
 }
