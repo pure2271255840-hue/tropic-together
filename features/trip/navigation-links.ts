@@ -13,6 +13,12 @@ export type AppleRouteLeg = {
   destinationName: string;
 };
 
+export type MapProvider = "apple" | "google";
+
+export type MapProviderContext = {
+  destinations?: string[];
+};
+
 export function normalizedMapUrl(value?: string) {
   const trimmedValue = value?.trim();
 
@@ -159,6 +165,132 @@ function routeStopName(place: MapDestination) {
   return place.name || place.address || place.city || "Stop";
 }
 
+const mainlandChinaCityKeywords = [
+  "北京",
+  "上海",
+  "广州",
+  "深圳",
+  "杭州",
+  "南京",
+  "苏州",
+  "成都",
+  "重庆",
+  "西安",
+  "武汉",
+  "长沙",
+  "青岛",
+  "厦门",
+  "天津",
+  "三亚",
+  "桂林",
+  "大理",
+  "丽江",
+  "海南",
+  "云南",
+  "beijing",
+  "shanghai",
+  "guangzhou",
+  "shenzhen",
+  "hangzhou",
+  "nanjing",
+  "suzhou",
+  "chengdu",
+  "chongqing",
+  "xian",
+  "xi'an",
+  "wuhan",
+  "changsha",
+  "qingdao",
+  "xiamen",
+  "tianjin",
+  "sanya",
+  "guilin",
+  "dali",
+  "lijiang",
+  "hainan",
+  "yunnan"
+];
+
+const nonMainlandDestinationKeywords = [
+  "香港",
+  "澳门",
+  "澳門",
+  "台湾",
+  "台灣",
+  "hong kong",
+  "macau",
+  "macao",
+  "taiwan",
+  "malaysia",
+  "penang",
+  "george town",
+  "kota kinabalu",
+  "sabah",
+  "singapore",
+  "japan",
+  "thailand"
+];
+
+function normalizedDestinationText(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isLikelyNonMainlandDestination(value: string) {
+  const text = normalizedDestinationText(value);
+
+  return nonMainlandDestinationKeywords.some((keyword) =>
+    text.includes(keyword)
+  );
+}
+
+function isLikelyMainlandChinaDestination(value: string) {
+  const text = normalizedDestinationText(value);
+
+  if (!text || isLikelyNonMainlandDestination(text)) {
+    return false;
+  }
+
+  return (
+    text.includes("中国大陆") ||
+    text.includes("中國大陸") ||
+    text.includes("中华人民共和国") ||
+    text.includes("中華人民共和國") ||
+    /\b(china|prc|cn)\b/.test(text) ||
+    mainlandChinaCityKeywords.some((keyword) => text.includes(keyword))
+  );
+}
+
+function destinationTextsFor(
+  places: MapDestination[],
+  context?: MapProviderContext
+) {
+  return [
+    ...(context?.destinations ?? []),
+    ...places.flatMap((place) => [place.city, place.address, place.name])
+  ].filter((value): value is string => Boolean(value?.trim()));
+}
+
+export function defaultMapProviderForDestination(
+  places: MapDestination[] = [],
+  context?: MapProviderContext
+): MapProvider {
+  const destinationHints = (context?.destinations ?? []).filter((value) =>
+    Boolean(value.trim())
+  );
+
+  if (destinationHints.some(isLikelyMainlandChinaDestination)) {
+    return "apple";
+  }
+
+  if (destinationHints.length > 0) {
+    return "google";
+  }
+
+  const texts = destinationTextsFor(places);
+
+  return texts.some(isLikelyMainlandChinaDestination) ? "apple" : "google";
+}
+
 export function locationInputParts(
   value: string,
   currentAddress = "",
@@ -200,6 +332,21 @@ export function destinationFor(place: MapDestination) {
 
 export function externalMapUrl(place: MapDestination) {
   return normalizedMapUrl(place.mapUrl) ?? googleMapsSearchUrl(place);
+}
+
+export function defaultPlaceMapUrl(
+  place: MapDestination,
+  context?: MapProviderContext
+) {
+  const mapUrl = normalizedMapUrl(place.mapUrl);
+
+  if (mapUrl) {
+    return mapUrl;
+  }
+
+  return defaultMapProviderForDestination([place], context) === "apple"
+    ? appleMapsSearchUrl(place)
+    : googleMapsSearchUrl(place);
 }
 
 export function googleMapsSearchUrl(place: MapDestination) {
@@ -327,4 +474,13 @@ export function googleMapsRouteUrl(places: MapDestination[]) {
     : "";
 
   return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypointQuery}`;
+}
+
+export function defaultRouteMapUrl(
+  places: MapDestination[],
+  context?: MapProviderContext
+) {
+  return defaultMapProviderForDestination(places, context) === "apple"
+    ? appleMapsRouteUrl(places)
+    : googleMapsRouteUrl(places);
 }

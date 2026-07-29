@@ -25,7 +25,7 @@ import {
 } from "@/components/trip/phase1/test-account-shortcut-events";
 import {
   coordinateFromMapUrl,
-  externalMapUrl,
+  defaultPlaceMapUrl,
   locationInputParts
 } from "@/features/trip/navigation-links";
 import {
@@ -434,6 +434,7 @@ export function PlacesPage({ tripId }: PlacesPageProps) {
             <PlaceCard
               key={`${ranking.place.id}-${currentMember.id}`}
               ranking={ranking}
+              tripDestinations={data.trip.destinations}
               members={data.members}
               currentMember={currentMember}
               canManage={
@@ -637,6 +638,7 @@ function TripGroupPlaceCard({
 
 function PlaceCard({
   ranking,
+  tripDestinations,
   members,
   currentMember,
   canManage,
@@ -646,6 +648,7 @@ function PlaceCard({
   onVote
 }: {
   ranking: RankedPlace;
+  tripDestinations: string[];
   members: TripMember[];
   currentMember: TripMember;
   canManage: boolean;
@@ -660,6 +663,9 @@ function PlaceCard({
   const addedBy = memberName(members, place.addedByMemberId);
   const ownerOpinion = `${addedBy} 觉得${placeInitialTagLabels[place.initialTag]}`;
   const locationLabel = place.address || (place.mapUrl ? "查看地图位置" : "");
+  const mapHref = defaultPlaceMapUrl(place, {
+    destinations: tripDestinations
+  });
   const placeMeta = placeMetaText(place);
 
   return (
@@ -730,7 +736,7 @@ function PlaceCard({
         {locationLabel ? (
           <a
             className="focus-ring flex gap-2 rounded-lg text-muted-foreground transition hover:text-primary"
-            href={externalMapUrl(place)}
+            href={mapHref}
             rel="noreferrer"
             target="_blank"
           >

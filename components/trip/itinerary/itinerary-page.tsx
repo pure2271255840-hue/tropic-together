@@ -46,8 +46,7 @@ import {
   type ItineraryRoutePlan
 } from "@/features/trip/itinerary-routes";
 import {
-  appleMapsSearchUrl,
-  googleMapsDirectionsUrl,
+  defaultPlaceMapUrl,
   locationInputParts
 } from "@/features/trip/navigation-links";
 import {
@@ -805,6 +804,7 @@ export function ItineraryPage({
         <ItineraryDetail
           version={activeVersion}
           tripName={data.trip.name}
+          tripDestinations={data.trip.destinations}
           hotelAddress={data.trip.hotelAddress}
           hotelMapUrl={data.trip.hotelMapUrl}
           placeById={placeById}
@@ -1712,9 +1712,7 @@ function HotelLocationLine({
       ) : null}
       {routePlan ? (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-          <Route className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-          <span className="font-medium text-primary">{routePlan.label}</span>
-          <RoutePlanLinks routePlan={routePlan} />
+          <ExternalNavLink href={routePlan.href} label={routePlan.label} />
         </div>
       ) : null}
     </div>
@@ -1952,6 +1950,7 @@ function TripGroupWorkspace({
 function ItineraryDetail({
   version,
   tripName,
+  tripDestinations,
   hotelAddress,
   hotelMapUrl,
   placeById,
@@ -1977,6 +1976,7 @@ function ItineraryDetail({
 }: {
   version: ItineraryVersion;
   tripName: string;
+  tripDestinations: string[];
   hotelAddress?: string;
   hotelMapUrl?: string;
   placeById: Map<string, TravelPlace>;
@@ -2009,7 +2009,8 @@ function ItineraryDetail({
     version,
     placeById,
     hotelAddress,
-    hotelMapUrl
+    hotelMapUrl,
+    { destinations: tripDestinations }
   );
   const currentVote = votes.find((vote) => vote.memberId === currentMember.id);
   const upCount = votes.filter((vote) => vote.value === "up").length;
@@ -2170,6 +2171,7 @@ function ItineraryDetail({
         placeById={placeById}
         hotelAddress={hotelAddress}
         hotelMapUrl={hotelMapUrl}
+        tripDestinations={tripDestinations}
         currentMember={currentMember}
         members={members}
         isOwner={isOwner}
@@ -2211,6 +2213,7 @@ function Timeline({
   placeById,
   hotelAddress,
   hotelMapUrl,
+  tripDestinations,
   currentMember,
   members,
   isOwner,
@@ -2224,6 +2227,7 @@ function Timeline({
   placeById: Map<string, TravelPlace>;
   hotelAddress?: string;
   hotelMapUrl?: string;
+  tripDestinations: string[];
   currentMember: TripMember;
   members: TripMember[];
   isOwner: boolean;
@@ -2240,7 +2244,8 @@ function Timeline({
           day,
           placeById,
           hotelAddress,
-          hotelMapUrl
+          hotelMapUrl,
+          { destinations: tripDestinations }
         );
         const conflictItemIds = itineraryTimeConflictIds(day.items);
 
@@ -2256,11 +2261,7 @@ function Timeline({
                 </h2>
                 {routePlan ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary/20 bg-secondary px-3 text-sm font-medium text-primary">
-                      <Route className="h-4 w-4" aria-hidden="true" />
-                      {routePlan.label}
-                    </span>
-                    <RoutePlanLinks routePlan={routePlan} />
+                    <ExternalNavLink href={routePlan.href} label={routePlan.label} />
                   </div>
                 ) : null}
               </div>
@@ -2293,6 +2294,7 @@ function Timeline({
                     key={item.id}
                     item={item}
                     place={item.placeId ? placeById.get(item.placeId) : undefined}
+                    tripDestinations={tripDestinations}
                     members={members}
                     canManage={
                       canEdit &&
@@ -2320,6 +2322,7 @@ function Timeline({
 function TimelineItem({
   item,
   place,
+  tripDestinations,
   members,
   canManage,
   hasTimeConflict,
@@ -2329,6 +2332,7 @@ function TimelineItem({
 }: {
   item: ItineraryItem;
   place?: TravelPlace;
+  tripDestinations: string[];
   members: TripMember[];
   canManage: boolean;
   hasTimeConflict: boolean;
@@ -2340,6 +2344,9 @@ function TimelineItem({
   const lockStateLabel = item.isLocked ? "已锁定" : "可编辑";
   const canEditUnlocked = canManage && !item.isLocked;
   const proposalLabel = itineraryItemProposalLabel(item, place, members);
+  const placeMapUrl = place
+    ? defaultPlaceMapUrl(place, { destinations: tripDestinations })
+    : "";
 
   return (
     <div className="relative pb-5 last:pb-0">
@@ -2413,24 +2420,21 @@ function TimelineItem({
             )}
           </div>
           {place ? (
-            <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <a
+              className="focus-ring mt-2 flex w-fit items-center gap-2 rounded-lg text-sm text-muted-foreground transition hover:text-primary"
+              href={placeMapUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
               <MapPin className="h-4 w-4" aria-hidden="true" />
-              {place.name}
-            </p>
+              <span>{place.name}</span>
+            </a>
           ) : null}
           {item.notes ? (
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {item.notes}
             </p>
           ) : null}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {place ? (
-              <>
-                <ExternalNavLink href={appleMapsSearchUrl(place)} label="Apple" />
-                <ExternalNavLink href={googleMapsDirectionsUrl(place)} label="Google" />
-              </>
-            ) : null}
-          </div>
         </div>
       </div>
     </div>
@@ -3103,31 +3107,6 @@ function PlacePicker({
   );
 }
 
-function RoutePlanLinks({ routePlan }: { routePlan: ItineraryRoutePlan }) {
-  return (
-    <>
-      <ExternalNavLink
-        href={routePlan.appleHref}
-        label={routePlan.appleLegs.length > 1 ? "Apple 多站" : "Apple"}
-      />
-      <ExternalNavLink href={routePlan.href} label="Google" />
-      {routePlan.appleLegs.length > 1 ? (
-        <div className="flex basis-full flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
-          <span>Apple 逐段</span>
-          {routePlan.appleLegs.map((leg, index) => (
-            <ExternalNavLink
-              key={`${leg.href}-${index}`}
-              href={leg.href}
-              label={`第${index + 1}段`}
-              title={`${leg.originName} -> ${leg.destinationName}`}
-            />
-          ))}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
 function ExternalNavLink({
   href,
   label,
@@ -3148,7 +3127,7 @@ function ExternalNavLink({
       title={title}
     >
       {label}
-      {label === "总路线" ? (
+      {label.includes("路线") ? (
         <Route className="h-4 w-4" aria-hidden="true" />
       ) : (
         <ExternalLink className="h-4 w-4" aria-hidden="true" />

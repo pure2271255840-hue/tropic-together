@@ -1,18 +1,13 @@
 import {
-  appleMapsRouteLegs,
-  appleMapsRouteUrl,
-  appleMapsSearchUrl,
-  externalMapUrl,
-  googleMapsRouteUrl,
-  type AppleRouteLeg,
+  defaultPlaceMapUrl,
+  defaultRouteMapUrl,
+  type MapProviderContext,
   type MapDestination
 } from "@/features/trip/navigation-links";
 import type { ItineraryDay, ItineraryVersion, TravelPlace } from "./types";
 
 export type ItineraryRoutePlan = {
   href: string;
-  appleHref: string;
-  appleLegs: AppleRouteLeg[];
   label: string;
 };
 
@@ -53,7 +48,8 @@ export function routePlanForItineraryDay(
   day: ItineraryDay,
   placeById: Map<string, TravelPlace>,
   hotelAddress?: string,
-  hotelMapUrl?: string
+  hotelMapUrl?: string,
+  context?: MapProviderContext
 ): ItineraryRoutePlan | null {
   const dayPlaces = placesForItineraryDay(day, placeById);
   const hotelStop = hotelStopForLocation(hotelAddress, hotelMapUrl);
@@ -62,27 +58,21 @@ export function routePlanForItineraryDay(
     const stops = [hotelStop, ...dayPlaces];
 
     return {
-      href: googleMapsRouteUrl(stops),
-      appleHref: appleMapsRouteUrl(stops),
-      appleLegs: appleMapsRouteLegs(stops),
+      href: defaultRouteMapUrl(stops, context),
       label: "当天路线"
     };
   }
 
   if (dayPlaces.length > 1) {
     return {
-      href: googleMapsRouteUrl(dayPlaces),
-      appleHref: appleMapsRouteUrl(dayPlaces),
-      appleLegs: appleMapsRouteLegs(dayPlaces),
+      href: defaultRouteMapUrl(dayPlaces, context),
       label: "当天路线"
     };
   }
 
   if (dayPlaces.length === 1) {
     return {
-      href: externalMapUrl(dayPlaces[0]),
-      appleHref: appleMapsSearchUrl(dayPlaces[0]),
-      appleLegs: [],
+      href: defaultPlaceMapUrl(dayPlaces[0], context),
       label: "查看当天地点"
     };
   }
@@ -94,7 +84,8 @@ export function routePlanForItineraryVersion(
   version: ItineraryVersion,
   placeById: Map<string, TravelPlace>,
   hotelAddress?: string,
-  hotelMapUrl?: string
+  hotelMapUrl?: string,
+  context?: MapProviderContext
 ): ItineraryRoutePlan | null {
   const routePlaces = placesForItineraryVersion(version, placeById);
   const hotelStop = hotelStopForLocation(hotelAddress, hotelMapUrl);
@@ -104,33 +95,25 @@ export function routePlanForItineraryVersion(
 
     return stops.length > 1
       ? {
-          href: googleMapsRouteUrl(stops),
-          appleHref: appleMapsRouteUrl(stops),
-          appleLegs: appleMapsRouteLegs(stops),
+          href: defaultRouteMapUrl(stops, context),
           label: "总路线"
         }
       : {
-          href: externalMapUrl(hotelStop),
-          appleHref: appleMapsSearchUrl(hotelStop),
-          appleLegs: [],
+          href: defaultPlaceMapUrl(hotelStop, context),
           label: "查看酒店"
         };
   }
 
   if (routePlaces.length > 1) {
     return {
-      href: googleMapsRouteUrl(routePlaces),
-      appleHref: appleMapsRouteUrl(routePlaces),
-      appleLegs: appleMapsRouteLegs(routePlaces),
+      href: defaultRouteMapUrl(routePlaces, context),
       label: "总路线"
     };
   }
 
   if (routePlaces.length === 1) {
     return {
-      href: externalMapUrl(routePlaces[0]),
-      appleHref: appleMapsSearchUrl(routePlaces[0]),
-      appleLegs: [],
+      href: defaultPlaceMapUrl(routePlaces[0], context),
       label: "查看地点"
     };
   }

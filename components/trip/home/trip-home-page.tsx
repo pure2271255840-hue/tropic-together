@@ -185,7 +185,8 @@ export function TripHomePage({ tripId }: TripHomePageProps) {
           reminder.day,
           confirmedPlaceById,
           reminderTrip.trip.hotelAddress,
-          reminderTrip.trip.hotelMapUrl
+          reminderTrip.trip.hotelMapUrl,
+          { destinations: reminderTrip.trip.destinations }
         )
       : null;
 
@@ -329,10 +330,7 @@ function ItineraryReminderCard({
 
       {routePlan ? (
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="inline-flex h-9 items-center rounded-lg border border-primary/20 bg-white px-3 text-sm font-medium text-primary">
-            {routePlan.label}
-          </span>
-          <RoutePlanLinks routePlan={routePlan} inverse />
+          <ExternalNavLink href={routePlan.href} label={routePlan.label} inverse />
         </div>
       ) : null}
 
@@ -446,39 +444,6 @@ function MemberPill({ member }: { member: TripMember }) {
   );
 }
 
-function RoutePlanLinks({
-  routePlan,
-  inverse
-}: {
-  routePlan: ItineraryRoutePlan;
-  inverse?: boolean;
-}) {
-  return (
-    <>
-      <ExternalNavLink
-        href={routePlan.appleHref}
-        label={routePlan.appleLegs.length > 1 ? "Apple 多站" : "Apple"}
-        inverse={inverse}
-      />
-      <ExternalNavLink href={routePlan.href} label="Google" inverse={inverse} />
-      {routePlan.appleLegs.length > 1 ? (
-        <div className="flex basis-full flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
-          <span>Apple 逐段</span>
-          {routePlan.appleLegs.map((leg, index) => (
-            <ExternalNavLink
-              key={`${leg.href}-${index}`}
-              href={leg.href}
-              label={`第${index + 1}段`}
-              title={`${leg.originName} -> ${leg.destinationName}`}
-              inverse={inverse}
-            />
-          ))}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
 function ExternalNavLink({
   href,
   label,
@@ -504,7 +469,11 @@ function ExternalNavLink({
       title={title}
     >
       {label}
-      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+      {label.includes("路线") ? (
+        <Route className="h-3.5 w-3.5" aria-hidden="true" />
+      ) : (
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
     </a>
   );
 }
