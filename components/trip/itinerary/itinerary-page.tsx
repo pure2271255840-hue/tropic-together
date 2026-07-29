@@ -47,6 +47,7 @@ import {
 } from "@/features/trip/itinerary-routes";
 import {
   defaultPlaceMapUrl,
+  locationDisplayLabel,
   locationInputParts
 } from "@/features/trip/navigation-links";
 import {
@@ -1734,7 +1735,8 @@ function CopyInviteButton({
       type="button"
       variant={isCopied ? "quiet" : "outline"}
       className={cn(
-        compactOnMobile && "h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
+        compactOnMobile &&
+          "h-9 shrink-0 gap-1.5 px-2 text-xs sm:h-10 sm:px-3 sm:text-sm"
       )}
       disabled={!copyValue}
       aria-label={isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
@@ -1748,7 +1750,7 @@ function CopyInviteButton({
       ) : (
         <Copy className="h-4 w-4" aria-hidden="true" />
       )}
-      <span className={cn(compactOnMobile && "hidden sm:inline")}>
+      <span className={cn(compactOnMobile && "whitespace-nowrap")}>
         {isCopied ? "已复制邀请码" : isFailed ? "复制失败" : "复制邀请码"}
       </span>
     </Button>
@@ -1770,6 +1772,17 @@ function HotelLocationLine({
   const hotelMapHref = hotelStop
     ? defaultPlaceMapUrl(hotelStop, { destinations: tripDestinations })
     : "";
+  const hotelLocationLabel = hotelStop
+    ? locationDisplayLabel(
+        {
+          name: "酒店位置",
+          address: address?.trim() || "",
+          city: "",
+          mapUrl: mapUrl || hotelStop.mapUrl
+        },
+        "酒店地图位置"
+      )
+    : "";
 
   if (!hotelStop && !routePlan) {
     return null;
@@ -1786,7 +1799,7 @@ function HotelLocationLine({
             rel="noreferrer"
             target="_blank"
           >
-            {address?.trim() || "酒店地图链接"}
+            {hotelLocationLabel}
           </a>
         </p>
       ) : null}
@@ -1850,10 +1863,10 @@ function TripGroupCard({
         }
       />
 
-      <div className="mt-4 flex flex-nowrap gap-2">
+      <div className="mt-4 flex flex-nowrap items-center gap-1.5">
         <Button
           type="button"
-          className="min-w-0 flex-1 px-3 sm:flex-none sm:px-4"
+          className="h-9 min-w-0 flex-1 gap-1.5 px-2 text-xs sm:h-10 sm:flex-none sm:px-3 sm:text-sm"
           onClick={() => onOpenTrip(group.id)}
         >
           进入行程
@@ -1867,7 +1880,7 @@ function TripGroupCard({
           <Button
             type="button"
             variant="outline"
-            className="h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
+            className="h-9 shrink-0 gap-1.5 px-2 text-xs sm:h-10 sm:px-3 sm:text-sm"
             onClick={() => onDeleteTrip(group)}
             disabled={isDeleting}
             isLoading={isDeleting}
@@ -1877,7 +1890,7 @@ function TripGroupCard({
             {!isDeleting ? (
               <Trash2 className="h-4 w-4" aria-hidden="true" />
             ) : null}
-            <span className="hidden sm:inline">
+            <span className="whitespace-nowrap">
               {isDeleting ? "删除中" : "删除"}
             </span>
           </Button>
@@ -1886,7 +1899,7 @@ function TripGroupCard({
           <Button
             type="button"
             variant="outline"
-            className="h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
+            className="h-9 shrink-0 gap-1.5 px-2 text-xs sm:h-10 sm:px-3 sm:text-sm"
             onClick={() => onLeaveTrip(group)}
             disabled={isLeaving}
             isLoading={isLeaving}
@@ -1896,7 +1909,7 @@ function TripGroupCard({
             {!isLeaving ? (
               <LogOut className="h-4 w-4" aria-hidden="true" />
             ) : null}
-            <span className="hidden sm:inline">
+            <span className="whitespace-nowrap">
               {isLeaving ? "退出中" : "退出行程"}
             </span>
           </Button>

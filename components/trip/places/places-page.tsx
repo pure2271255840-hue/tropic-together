@@ -33,6 +33,7 @@ import {
 import {
   coordinateFromMapUrl,
   defaultPlaceMapUrl,
+  locationDisplayLabel,
   locationInputParts
 } from "@/features/trip/navigation-links";
 import {
@@ -693,7 +694,8 @@ function PlaceCard({
   const currentVote = votes.find((vote) => vote.memberId === currentMember.id);
   const addedBy = memberName(members, place.addedByMemberId);
   const ownerOpinion = `${addedBy} 觉得${placeInitialTagLabels[place.initialTag]}`;
-  const locationLabel = place.address || (place.mapUrl ? "查看地图位置" : "");
+  const hasLocation = Boolean(place.address || place.mapUrl);
+  const locationLabel = hasLocation ? locationDisplayLabel(place) : "";
   const mapHref = defaultPlaceMapUrl(place, {
     destinations: tripDestinations
   });

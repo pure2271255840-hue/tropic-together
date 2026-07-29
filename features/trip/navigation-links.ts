@@ -95,6 +95,78 @@ function safeDecodeUrlText(value: string) {
   }
 }
 
+function normalizeDisplayText(value: string) {
+  return value.replace(/\+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function compactLocationText(value?: string) {
+  const text = normalizeDisplayText(value ?? "");
+
+  if (!text) {
+    return "";
+  }
+
+  const parts = text
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length > 1) {
+    return parts.slice(0, 2).join(", ");
+  }
+
+  return text.length > 48 ? `${text.slice(0, 48).trim()}...` : text;
+}
+
+function googleMapsPlaceName(value?: string) {
+  const mapUrl = normalizedMapUrl(value);
+
+  if (!mapUrl) {
+    return "";
+  }
+
+  try {
+    const url = new URL(mapUrl);
+    const host = url.hostname.toLowerCase();
+
+    if (!host.includes("google.") && host !== "maps.google.com") {
+      return "";
+    }
+
+    const pathParts = safeDecodeUrlText(url.pathname)
+      .split("/")
+      .map((part) => normalizeDisplayText(part))
+      .filter(Boolean);
+    const placeIndex = pathParts.findIndex((part) => part === "place");
+    const placeName = placeIndex >= 0 ? pathParts[placeIndex + 1] : "";
+
+    return compactLocationText(placeName);
+  } catch {
+    return "";
+  }
+}
+
+export function locationDisplayLabel(
+  place: MapDestination,
+  fallback = "查看地图位置"
+) {
+  const mapPlaceName = googleMapsPlaceName(place.mapUrl || place.address);
+
+  if (mapPlaceName) {
+    return mapPlaceName;
+  }
+
+  const address = normalizedMapUrl(place.address)
+    ? ""
+    : compactLocationText(place.address);
+
+  if (address) {
+    return address;
+  }
+
+  return fallback;
+}
+
 export function coordinateFromMapUrl(value?: string) {
   const mapUrl = normalizedMapUrl(value);
 
