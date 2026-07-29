@@ -137,7 +137,9 @@ function googleMapsPlaceName(value?: string) {
       .split("/")
       .map((part) => normalizeDisplayText(part))
       .filter(Boolean);
-    const placeIndex = pathParts.findIndex((part) => part === "place");
+    const placeIndex = pathParts.findIndex(
+      (part) => part === "place" || part === "search"
+    );
     const placeName = placeIndex >= 0 ? pathParts[placeIndex + 1] : "";
 
     return compactLocationText(placeName);
