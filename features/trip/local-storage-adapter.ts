@@ -8,6 +8,7 @@ import {
 import { createSeedTripData } from "./seed-data";
 import type {
   AiItineraryDraft,
+  ItineraryDay,
   ItineraryDayInput,
   ItineraryItemInput,
   ItineraryVote,
@@ -19,6 +20,7 @@ import type {
   TripSettingsInput,
   TripPhase1Data
 } from "./types";
+import { parseTripDestinations } from "./trip-context";
 
 const storageVersion = 2;
 const storagePrefix = "tropic-together:phase1:";
@@ -47,8 +49,8 @@ function makeId(prefix: string) {
     .slice(2, 8)}`;
 }
 
-function normalizeLookupText(value: string) {
-  return value.trim().toLowerCase();
+function normalizeLookupText(value?: string) {
+  return value?.trim().toLowerCase() ?? "";
 }
 
 function readStoredTripData(tripId: string): TripPhase1Data | null {
@@ -213,6 +215,8 @@ export function addPlaceToTrip(data: TripPhase1Data, input: PlaceInput) {
     id: makeId("place"),
     tripId: next.trip.id,
     name: input.name.trim(),
+    officialName: input.officialName?.trim() || undefined,
+    activityTitle: input.activityTitle?.trim() || undefined,
     city: input.city.trim(),
     category: input.category.trim(),
     initialTag: input.initialTag,
@@ -224,6 +228,16 @@ export function addPlaceToTrip(data: TripPhase1Data, input: PlaceInput) {
       Number.isFinite(input.lat) && Number.isFinite(input.lng)
         ? { lat: Number(input.lat), lng: Number(input.lng) }
         : undefined,
+    poiProvider: input.poiProvider,
+    poiId: input.poiId?.trim() || undefined,
+    poiTypeCode: input.poiTypeCode?.trim() || undefined,
+    district: input.district?.trim() || undefined,
+    adcode: input.adcode?.trim() || undefined,
+    citycode: input.citycode?.trim() || undefined,
+    coordinateSource:
+      input.coordinateSource ?? (input.poiId ? "amap_poi" : "manual"),
+    locationStatus:
+      input.locationStatus ?? (input.poiId ? "verified" : "needs_confirmation"),
     addedByMemberId: next.currentMemberId,
     createdAt: timestamp,
     updatedAt: timestamp
@@ -246,6 +260,8 @@ export function updatePlaceInTrip(
       ? {
           ...place,
           name: input.name.trim(),
+          officialName: input.officialName?.trim() || place.officialName,
+          activityTitle: input.activityTitle?.trim() || place.activityTitle,
           city: input.city.trim(),
           category: input.category.trim(),
           initialTag: input.initialTag,
@@ -257,6 +273,18 @@ export function updatePlaceInTrip(
             Number.isFinite(input.lat) && Number.isFinite(input.lng)
               ? { lat: Number(input.lat), lng: Number(input.lng) }
               : undefined,
+          poiProvider: input.poiProvider ?? place.poiProvider,
+          poiId: input.poiId?.trim() || place.poiId,
+          poiTypeCode: input.poiTypeCode?.trim() || place.poiTypeCode,
+          district: input.district?.trim() || place.district,
+          adcode: input.adcode?.trim() || place.adcode,
+          citycode: input.citycode?.trim() || place.citycode,
+          coordinateSource:
+            input.coordinateSource ?? place.coordinateSource ?? "manual",
+          locationStatus:
+            input.locationStatus ??
+            place.locationStatus ??
+            (place.poiId ? "verified" : "needs_confirmation"),
           updatedAt: timestamp
         }
       : place
@@ -276,6 +304,12 @@ export function updateTripSettingsInTrip(
   next.trip.name = input.name?.trim() || next.trip.name;
   next.trip.startDate = input.startDate || next.trip.startDate;
   next.trip.endDate = input.endDate || next.trip.endDate;
+  if (input.destinations) {
+    next.trip.destinations = parseTripDestinations(input.destinations.join("、"));
+  }
+  if (input.timezone?.trim()) {
+    next.trip.timezone = input.timezone.trim();
+  }
   next.trip.hotelAddress = input.hotelAddress?.trim() || undefined;
   next.trip.hotelMapUrl = input.hotelMapUrl?.trim() || undefined;
   next.updatedAt = timestamp;
@@ -714,9 +748,15 @@ export function addAiItineraryDraftToTrip(
     ) ?? next.itineraryVersions[0];
   const versionNumber = currentVersion?.versionNumber ?? 1;
   const versionId = currentVersion?.id ?? makeId("itinerary-ai");
+  const placeById = new Map(next.places.map((place) => [place.id, place]));
   const placeByName = new Map(
     next.places.flatMap((place) => {
-      const names = [place.name, place.name.split(/\s+/)[0]]
+      const names = [
+        place.name,
+        place.officialName,
+        place.activityTitle,
+        place.name.split(/\s+/)[0]
+      ]
         .map(normalizeLookupText)
         .filter(Boolean);
 
@@ -733,7 +773,7 @@ export function addAiItineraryDraftToTrip(
     createdByMemberId: currentVersion?.createdByMemberId ?? next.currentMemberId,
     createdAt: currentVersion?.createdAt ?? timestamp,
     updatedAt: timestamp,
-    days: draft.days.map((day) => {
+    days: completeDraftDays(next, draft.days.map((day) => {
       const dayId = makeId("day-ai");
 
       return {
@@ -746,7 +786,9 @@ export function addAiItineraryDraftToTrip(
         summary: day.summary?.trim() || "",
         items: day.items.map((item) => {
           const placeName = normalizeLookupText(item.placeName ?? "");
-          const place = placeName ? placeByName.get(placeName) : undefined;
+          const place =
+            (item.placeId ? placeById.get(item.placeId) : undefined) ??
+            (placeName ? placeByName.get(placeName) : undefined);
 
           return {
             id: makeId("item-ai"),
@@ -761,7 +803,7 @@ export function addAiItineraryDraftToTrip(
           };
         })
       };
-    })
+    }), next.trip.startDate, next.trip.endDate, versionId)
   };
 
   next.currentItineraryVersionId = versionId;
@@ -773,4 +815,53 @@ export function addAiItineraryDraftToTrip(
   next.updatedAt = timestamp;
 
   return next;
+}
+
+function dateStringsInRange(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  const [startYear, startMonth, startDay] = startDate.split("-").map(Number);
+  const [endYear, endMonth, endDay] = endDate.split("-").map(Number);
+
+  if (![startYear, startMonth, startDay, endYear, endMonth, endDay].every(Number.isFinite)) {
+    return dates;
+  }
+
+  const cursor = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+  const end = new Date(Date.UTC(endYear, endMonth - 1, endDay));
+
+  while (cursor <= end && dates.length < 31) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return dates;
+}
+
+function completeDraftDays(
+  data: TripPhase1Data,
+  days: ItineraryDay[],
+  startDate: string,
+  endDate: string,
+  versionId: string
+) {
+  const existingByDate = new Map(days.map((day) => [day.date, day]));
+
+  return dateStringsInRange(startDate, endDate).map((date) => {
+    const existing = existingByDate.get(date);
+
+    if (existing) {
+      return existing;
+    }
+
+    return {
+      id: makeId("day-ai"),
+      versionId,
+      createdByMemberId: data.currentMemberId,
+      date,
+      title: "当天尚未安排",
+      city: "",
+      summary: "可以稍后补充地点或活动。",
+      items: []
+    };
+  });
 }

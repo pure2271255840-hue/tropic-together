@@ -1,12 +1,42 @@
 import type { TripGroupSummary, TripPhase1Data } from "./types";
 import { contributingMemberIdsForTrip } from "./member-actions";
 
+function normalizePlaceLocationStatus(
+  place: TripPhase1Data["places"][number]
+) {
+  const hasCoordinate = Boolean(place.coordinate);
+  const coordinateSource =
+    place.coordinateSource ??
+    (place.poiId
+      ? "amap_poi"
+      : place.mapUrl && hasCoordinate
+        ? "map_url"
+        : "manual");
+  const locationStatus =
+    place.locationStatus ?? (place.poiId ? "verified" : "needs_confirmation");
+
+  return {
+    ...place,
+    officialName: place.officialName?.trim() || undefined,
+    activityTitle: place.activityTitle?.trim() || undefined,
+    coordinateSource,
+    locationStatus
+  };
+}
+
+function normalizeTripData(data: TripPhase1Data) {
+  return {
+    ...data,
+    places: data.places.map(normalizePlaceLocationStatus)
+  };
+}
+
 export function cloneData(data: TripPhase1Data): TripPhase1Data {
   return JSON.parse(JSON.stringify(data)) as TripPhase1Data;
 }
 
 export function compactTripItineraryHistory(data: TripPhase1Data): TripPhase1Data {
-  const next = cloneData(data);
+  const next = normalizeTripData(cloneData(data));
   const currentVersion =
     next.itineraryVersions.find(
       (version) => version.id === next.currentItineraryVersionId

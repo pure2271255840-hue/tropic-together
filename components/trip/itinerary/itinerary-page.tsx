@@ -68,6 +68,12 @@ import {
   normalizeInviteCode
 } from "@/features/trip/invite-code";
 import {
+  browserTimezone,
+  commonTripTimezones,
+  inferTripTimezone,
+  parseTripDestinations
+} from "@/features/trip/trip-context";
+import {
   isJoinedTripForUser,
   isTripManagedByUser,
   memberBelongsToUser
@@ -125,15 +131,19 @@ type ItemFormState = {
 
 type NewTripForm = {
   name: string;
+  destinations: string;
   startDate: string;
   endDate: string;
+  timezone: string;
   hotelLocation: string;
 };
 
 type TripSettingsForm = {
   name: string;
+  destinations: string;
   startDate: string;
   endDate: string;
+  timezone: string;
   hotelLocation: string;
 };
 
@@ -270,16 +280,22 @@ export function ItineraryPage({
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
   const [newTripForm, setNewTripForm] = useState<NewTripForm>({
     name: "",
+    destinations: "",
     startDate: "",
     endDate: "",
+    timezone: browserTimezone(),
     hotelLocation: ""
   });
   const [tripSettingsForm, setTripSettingsForm] = useState<TripSettingsForm>({
     name: "",
+    destinations: "",
     startDate: "",
     endDate: "",
+    timezone: browserTimezone(),
     hotelLocation: ""
   });
+  const [newTripTimezoneManuallySet, setNewTripTimezoneManuallySet] =
+    useState(false);
   const { data, isLoaded, actions } = useTripDataStore();
   const isContentLocked = isTripContentLocked(data.trip.phase);
   const currentMember = resolveCurrentTripMember(data, auth.user);
@@ -429,10 +445,13 @@ export function ItineraryPage({
   function openNewTripModal() {
     setNewTripForm({
       name: "",
+      destinations: "",
       startDate: data.trip.startDate,
       endDate: data.trip.endDate,
+      timezone: browserTimezone(),
       hotelLocation: ""
     });
+    setNewTripTimezoneManuallySet(false);
     setShowNewTripModal(true);
   }
 
@@ -443,8 +462,10 @@ export function ItineraryPage({
 
     setTripSettingsForm({
       name: data.trip.name,
+      destinations: data.trip.destinations.join("、"),
       startDate: data.trip.startDate,
       endDate: data.trip.endDate,
+      timezone: data.trip.timezone,
       hotelLocation: data.trip.hotelAddress ?? data.trip.hotelMapUrl ?? ""
     });
     setShowTripSettingsModal(true);
@@ -465,8 +486,10 @@ export function ItineraryPage({
 
     actions.updateTripSettings({
       name: tripSettingsForm.name,
+      destinations: parseTripDestinations(tripSettingsForm.destinations),
       startDate: tripSettingsForm.startDate,
       endDate: tripSettingsForm.endDate,
+      timezone: tripSettingsForm.timezone,
       hotelAddress: hotelLocation.address,
       hotelMapUrl: hotelLocation.mapUrl
     });
@@ -478,7 +501,22 @@ export function ItineraryPage({
     key: K,
     value: NewTripForm[K]
   ) {
-    setNewTripForm((current) => ({ ...current, [key]: value }));
+    setNewTripForm((current) => {
+      const next = { ...current, [key]: value };
+
+      if (key === "destinations" && !newTripTimezoneManuallySet) {
+        next.timezone = inferTripTimezone(
+          parseTripDestinations(String(value)),
+          browserTimezone()
+        );
+      }
+
+      return next;
+    });
+
+    if (key === "timezone") {
+      setNewTripTimezoneManuallySet(true);
+    }
   }
 
   async function createTripGroup(event: FormEvent<HTMLFormElement>) {
@@ -487,8 +525,10 @@ export function ItineraryPage({
     if (
       !auth.user ||
       !newTripForm.name.trim() ||
+      parseTripDestinations(newTripForm.destinations).length === 0 ||
       !newTripForm.startDate ||
-      !newTripForm.endDate
+      !newTripForm.endDate ||
+      !newTripForm.timezone
     ) {
       return;
     }
@@ -515,6 +555,10 @@ export function ItineraryPage({
       nextData.trip.ownerMemberId = ownerMember.id;
       nextData.trip.startDate = newTripForm.startDate;
       nextData.trip.endDate = newTripForm.endDate;
+      nextData.trip.destinations = parseTripDestinations(
+        newTripForm.destinations
+      );
+      nextData.trip.timezone = newTripForm.timezone;
       nextData.trip.phase = "collecting_places";
       nextData.trip.inviteCode = createInviteCode();
       nextData.trip.inviteUrl = invitePath(nextData.trip.inviteCode);
@@ -1242,6 +1286,14 @@ export function ItineraryPage({
           />
           <input
             className="field-control"
+            placeholder="目的地城市，例如：杭州、上海"
+            value={newTripForm.destinations}
+            onChange={(event) =>
+              updateNewTrip("destinations", event.target.value)
+            }
+          />
+          <input
+            className="field-control"
             type="date"
             value={newTripForm.startDate}
             onChange={(event) => updateNewTrip("startDate", event.target.value)}
@@ -1252,6 +1304,22 @@ export function ItineraryPage({
             value={newTripForm.endDate}
             onChange={(event) => updateNewTrip("endDate", event.target.value)}
           />
+          <label className="grid gap-2 text-sm font-medium">
+            行程时区
+            <select
+              className="field-control"
+              value={newTripForm.timezone}
+              onChange={(event) =>
+                updateNewTrip("timezone", event.target.value)
+              }
+            >
+              {timezoneOptionsForForm(newTripForm.timezone).map((timezone) => (
+                <option key={timezone} value={timezone}>
+                  {timezone}
+                </option>
+              ))}
+            </select>
+          </label>
           <input
             className="field-control"
             placeholder="酒店地址或地图链接（可选）"
@@ -1265,8 +1333,10 @@ export function ItineraryPage({
             disabled={
               isCreatingTrip ||
               !newTripForm.name.trim() ||
+              parseTripDestinations(newTripForm.destinations).length === 0 ||
               !newTripForm.startDate ||
-              !newTripForm.endDate
+              !newTripForm.endDate ||
+              !newTripForm.timezone
             }
             isLoading={isCreatingTrip}
           >
@@ -1290,6 +1360,17 @@ export function ItineraryPage({
               setTripSettingsForm((current) => ({
                 ...current,
                 name: event.target.value
+              }))
+            }
+          />
+          <input
+            className="field-control"
+            placeholder="目的地城市，例如：杭州、上海"
+            value={tripSettingsForm.destinations}
+            onChange={(event) =>
+              setTripSettingsForm((current) => ({
+                ...current,
+                destinations: event.target.value
               }))
             }
           />
@@ -1317,6 +1398,27 @@ export function ItineraryPage({
               }
             />
           </div>
+          <label className="grid gap-2 text-sm font-medium">
+            行程时区
+            <select
+              className="field-control"
+              value={tripSettingsForm.timezone}
+              onChange={(event) =>
+                setTripSettingsForm((current) => ({
+                  ...current,
+                  timezone: event.target.value
+                }))
+              }
+            >
+              {timezoneOptionsForForm(tripSettingsForm.timezone).map(
+                (timezone) => (
+                  <option key={timezone} value={timezone}>
+                    {timezone}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
           <input
             className="field-control"
             placeholder="酒店地址或地图链接（可选）"
@@ -1332,8 +1434,10 @@ export function ItineraryPage({
             type="submit"
             disabled={
               !tripSettingsForm.name.trim() ||
+              parseTripDestinations(tripSettingsForm.destinations).length === 0 ||
               !tripSettingsForm.startDate ||
-              !tripSettingsForm.endDate
+              !tripSettingsForm.endDate ||
+              !tripSettingsForm.timezone
             }
           >
             保存设置
@@ -3480,6 +3584,15 @@ function formatDateTime(value: string) {
 
 function memberName(members: TripMember[], memberId: string) {
   return members.find((member) => member.id === memberId)?.displayName ?? "成员";
+}
+
+function timezoneOptionsForForm(selectedTimezone: string) {
+  return Array.from(
+    new Set([
+      selectedTimezone,
+      ...commonTripTimezones
+    ].filter(Boolean))
+  );
 }
 
 function canManageItineraryItem(

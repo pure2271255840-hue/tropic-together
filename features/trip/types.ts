@@ -58,6 +58,8 @@ export type TravelPlace = {
   id: string;
   tripId: string;
   name: string;
+  officialName?: string;
+  activityTitle?: string;
   city: string;
   category: string;
   initialTag: PlaceInitialTag;
@@ -66,6 +68,18 @@ export type TravelPlace = {
   notes: string;
   suggestedDuration: string;
   coordinate?: Coordinate;
+  poiProvider?: "amap";
+  poiId?: string;
+  poiTypeCode?: string;
+  district?: string;
+  adcode?: string;
+  citycode?: string;
+  coordinateSource?:
+    | "amap_poi"
+    | "amap_geocode"
+    | "map_url"
+    | "manual";
+  locationStatus?: "verified" | "geocoded" | "needs_confirmation";
   addedByMemberId: string;
   createdAt: string;
   updatedAt: string;
@@ -154,6 +168,8 @@ export type TripGroupSummary = {
 
 export type PlaceInput = {
   name: string;
+  officialName?: string;
+  activityTitle?: string;
   city: string;
   category: string;
   initialTag: PlaceInitialTag;
@@ -163,18 +179,29 @@ export type PlaceInput = {
   suggestedDuration: string;
   lat?: number;
   lng?: number;
+  poiProvider?: "amap";
+  poiId?: string;
+  poiTypeCode?: string;
+  district?: string;
+  adcode?: string;
+  citycode?: string;
+  coordinateSource?: TravelPlace["coordinateSource"];
+  locationStatus?: TravelPlace["locationStatus"];
 };
 
 export type TripSettingsInput = {
   name?: string;
   startDate?: string;
   endDate?: string;
+  destinations?: string[];
+  timezone?: string;
   hotelAddress?: string;
   hotelMapUrl?: string;
 };
 
 export type AiItineraryItemDraft = {
   title: string;
+  placeId?: string;
   placeName?: string;
   startTime?: string;
   endTime?: string;

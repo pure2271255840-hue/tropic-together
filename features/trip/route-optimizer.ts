@@ -67,6 +67,8 @@ function buildPlaceLookup(places: TravelPlace[]) {
   for (const place of places) {
     const keys = [
       normalizeLookupText(place.name),
+      normalizeLookupText(place.officialName),
+      normalizeLookupText(place.activityTitle),
       normalizeLookupText(place.name.split(/\s+/)[0])
     ].filter(Boolean);
 
@@ -82,8 +84,17 @@ function buildPlaceLookup(places: TravelPlace[]) {
 
 function placeForDraftItem(
   item: AiItineraryItemDraft,
-  placeLookup: Map<string, TravelPlace>
+  placeLookup: Map<string, TravelPlace>,
+  placeById: Map<string, TravelPlace>
 ) {
+  if (item.placeId) {
+    const place = placeById.get(item.placeId);
+
+    if (place) {
+      return place;
+    }
+  }
+
   const keys = [
     normalizeLookupText(item.placeName),
     normalizeLookupText(item.title)
@@ -233,6 +244,7 @@ function dayHasLockedItems(
 function optimizeDayRoute(
   day: AiItineraryDayDraft,
   placeLookup: Map<string, TravelPlace>,
+  placeById: Map<string, TravelPlace>,
   startCoordinate?: Coordinate,
   currentVersion?: ItineraryVersion
 ) {
@@ -241,7 +253,7 @@ function optimizeDayRoute(
   }
 
   const candidates = day.items.flatMap((item, originalIndex) => {
-    const place = placeForDraftItem(item, placeLookup);
+    const place = placeForDraftItem(item, placeLookup, placeById);
     const coordinate = place ? coordinateForPlace(place) : undefined;
 
     return coordinate ? [{ item, coordinate, originalIndex }] : [];
@@ -281,6 +293,7 @@ export function optimizeAiItineraryDraftRoute(
   input: OptimizeAiItineraryDraftInput
 ): AiItineraryDraft {
   const placeLookup = buildPlaceLookup(input.places);
+  const placeById = new Map(input.places.map((place) => [place.id, place]));
   const hotelCoordinate = coordinateForHotel(
     input.hotelAddress,
     input.hotelMapUrl
@@ -292,6 +305,7 @@ export function optimizeAiItineraryDraftRoute(
       optimizeDayRoute(
         day,
         placeLookup,
+        placeById,
         hotelCoordinate,
         input.currentVersion
       )

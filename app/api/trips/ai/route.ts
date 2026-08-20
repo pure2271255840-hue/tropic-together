@@ -66,7 +66,9 @@ type PromptPayload = {
   };
   ownerPreference?: string;
   places: Array<{
+    placeId: string;
     name: string;
+    officialName?: string;
     city: string;
     category: string;
     initialOpinion: string;
@@ -97,6 +99,7 @@ type PromptPayload = {
       summary: string;
       items: Array<{
         title: string;
+        placeId?: string;
         placeName?: string;
         startTime: string;
         endTime: string;
@@ -142,6 +145,7 @@ function versionPayload(
       summary: day.summary,
       items: day.items.map((item) => ({
         title: item.title,
+        placeId: item.placeId,
         placeName: item.placeId
           ? places.find((place) => place.id === item.placeId)?.name
           : undefined,
@@ -177,7 +181,9 @@ function buildPromptPayload(
       const place = ranking.place;
 
       return {
+        placeId: place.id,
         name: place.name,
+        officialName: place.officialName,
         city: place.city,
         category: place.category,
         initialOpinion: placeInitialTagLabels[place.initialTag],
@@ -216,10 +222,10 @@ function jsonInstruction() {
     "你是一个私密朋友旅行协作工具里的行程草稿助手。",
     "只输出 JSON，不要 Markdown，不要解释。",
     "输出结构必须是：",
-    '{"label":"AI 草稿","days":[{"date":"YYYY-MM-DD","title":"string","city":"string","summary":"string","items":[{"title":"string","placeName":"string","startTime":"HH:mm","endTime":"HH:mm","notes":"string"}]}]}',
+    '{"label":"AI 草稿","days":[{"date":"YYYY-MM-DD","title":"string","city":"string","summary":"string","items":[{"title":"string","placeId":"string|null","placeName":"string|null","startTime":"HH:mm","endTime":"HH:mm","notes":"string"}]}]}',
     "规则：",
     "- 结果只是可编辑草稿，不要声称已经确认最终版。",
-    "- 优先使用 places 中已有地点，placeName 必须尽量与 places.name 完全一致。",
+    "- 优先使用 places 中已有地点；关联地点时必须返回对应的 placeId，同时可以返回 placeName 供展示。没有具体地点的活动才可以不填 placeId。",
     "- places 已按成员偏好粗排，preferenceScore/preferenceRank 只作为偏好参考，不要把分数当唯一排序依据。",
     "- 如果输入包含 ownerPreference，它是发起者本次生成的软偏好。要尽量参考，例如不想太赶、最后想喝酒、每天不要太早开始、少跨区域折返；但不能覆盖成员投票、日期范围、已锁定活动和地点事实。",
     "- 安排活动时要根据 city、address、coordinate 和酒店地址把相近地点放在同一天或相邻时段，减少跨城折返和来回绕路；必要时可以为了路线顺畅牺牲少量偏好分。",
@@ -275,6 +281,10 @@ function cleanItems(value: unknown): AiItineraryItemDraft[] {
 
       return [{
         title,
+        placeId:
+          typeof candidate.placeId === "string" && candidate.placeId.trim()
+            ? candidate.placeId.trim()
+            : undefined,
         placeName: cleanString(candidate.placeName) || undefined,
         startTime: validTime(candidate.startTime) ? candidate.startTime : "",
         endTime: validTime(candidate.endTime) ? candidate.endTime : "",
@@ -283,7 +293,7 @@ function cleanItems(value: unknown): AiItineraryItemDraft[] {
     });
 }
 
-function cleanDraft(value: unknown): AiItineraryDraft | null {
+function cleanDraft(value: unknown, allowedPlaceIds: Set<string>): AiItineraryDraft | null {
   const candidate = value as AiItineraryDraft | undefined;
 
   if (!candidate || !Array.isArray(candidate.days)) {
@@ -306,7 +316,13 @@ function cleanDraft(value: unknown): AiItineraryDraft | null {
         title,
         city: cleanString(draftDay.city),
         summary: cleanString(draftDay.summary),
-        items
+        items: items.map((item) => ({
+          ...item,
+          placeId:
+            item.placeId && allowedPlaceIds.has(item.placeId)
+              ? item.placeId
+              : undefined
+        }))
       }];
     })
     .sort((left, right) => left.date.localeCompare(right.date));
@@ -525,7 +541,12 @@ export async function POST(request: NextRequest) {
     }
 
     const content = result.parsedResponse.choices?.[0]?.message?.content;
-    const draft = content ? cleanDraft(parseJsonContent(content)) : null;
+    const draft = content
+      ? cleanDraft(
+          parseJsonContent(content),
+          new Set(body.data.places.map((place) => place.id))
+        )
+      : null;
 
     if (draft) {
       return NextResponse.json({
